@@ -8,7 +8,7 @@ from .config import meta_settings
 app = FastAPI()
 
 
-@app.get("/verify", response_class=PlainTextResponse, name="Verify Webhook")
+@app.get("/webhook", response_class=PlainTextResponse, name="Verify Webhook")
 async def verify_webhook(
     hub_mode: str = Query(..., alias="hub.mode"),
     hub_challenge: str = Query(..., alias="hub.challenge"),
