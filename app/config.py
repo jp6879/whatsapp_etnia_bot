@@ -7,12 +7,29 @@ _base_config = SettingsConfigDict(
 )
 
 
-class MetaCloudSettings(BaseSettings):
-    WHATSAPP_VERIFY_TOKEN: str
-    WHATSAPP_ACCESS_TOKEN: str
-    WHATSAPP_PHONE_NUMBER_ID: str
+class AppSettings(BaseSettings):
+    WPP_ADAPTER_URL: str
+    AUTH_SESSION_KEY: str
 
     model_config = _base_config
 
 
-meta_settings = MetaCloudSettings()
+class RedisSettings(BaseSettings):
+    REDIS_DB_URL: str
+
+    model_config = _base_config
+
+
+class GoogleDriveSettings(BaseSettings):
+    SERVICE_ACCOUNT_FILE: str
+    TOKEN_FILE: str
+    SCOPES: list[str]
+    ADS_FILE_PATH: str
+    FOLDER_ID: str
+
+    model_config = _base_config
+
+
+redis_settings = RedisSettings()
+gdrive_settings = GoogleDriveSettings()
+wpp_settings = AppSettings()

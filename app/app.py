@@ -1,78 +1,175 @@
 import json
-from datetime import datetime
-import httpx
-from fastapi import FastAPI, status, Request, Query, HTTPException
-from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel
-from .config import meta_settings
+from fastapi import FastAPI, Request, Header, HTTPException
+import requests
+from app.config import wpp_settings
+from app.session.session import RedisSession
+from app.utils.message_manager import MessageManager
+import io
+import base64
+from googleapiclient.http import MediaIoBaseDownload
+
+
+def download_file_as_base64(service, file_id, mime_type="application/octet-stream"):
+    """
+    Download a Google Drive file directly into memory and return a data URI.
+    """
+    request = service.files().get_media(fileId=file_id)
+    fh = io.BytesIO()
+    downloader = MediaIoBaseDownload(fh, request)
+
+    done = False
+    while not done:
+        status, done = downloader.next_chunk()
+
+    # Reset pointer to start
+    fh.seek(0)
+    # Encode in base64
+    b64 = base64.b64encode(fh.read()).decode("utf-8")
+    return f"data:{mime_type};base64,{b64}"
+
 
 app = FastAPI()
+message_manager = MessageManager()
+
+WPP_ADAPTER_URL = wpp_settings.WPP_ADAPTER_URL
 
 
-@app.get("/webhook", response_class=PlainTextResponse, name="Verify Webhook")
-async def verify_webhook(
-    hub_mode: str = Query(..., alias="hub.mode"),
-    hub_challenge: str = Query(..., alias="hub.challenge"),
-    hub_verify_token: str = Query(..., alias="hub.verify_token"),
+async def send_whatsapp_text(
+    to_whatsapp: str, body: str, media: str = None, file_name: str = None
 ):
-    if (
-        hub_mode == "subscribe"
-        and hub_verify_token == meta_settings.WHATSAPP_VERIFY_TOKEN
-    ):
-        print("WEBHOOK_VERIFIED")
-        return hub_challenge
-
-    print("WEBHOOK_VERIFICATION_FAILED")
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    payload = {
+        "to": to_whatsapp,
+        "message": body,
+        "authKey": wpp_settings.AUTH_SESSION_KEY,
+    }
+    if media:
+        payload["mediaUrl"] = media
+        payload["fileName"] = file_name
+    try:
+        requests.post(WPP_ADAPTER_URL, json=payload)
+    except Exception as e:
+        print("Error sending message via WPPConnect:", e)
+        raise
 
 
 @app.post("/webhook")
-async def response_webhook(request: Request):
+async def whatsapp_webhook(request: Request):
     data = await request.json()
-    try:
-        entry = data.get("entry", [])[0]
-        changes = entry.get("changes", [])[0]
-        messages = changes.get("value", {}).get("messages", [])
-        for message in messages:
-            sender = message.get("from")
-            text = message.get("text", {}).get("body")
+    from_number = data.get("From")
+    body = data.get("Body", "").strip()
+    print(f"Received message from {from_number}: {body}")
 
-            print(f"Received message from {sender}: {text}")
+    if not from_number or not body:
+        raise HTTPException(
+            status_code=400, detail="Missing From number or Body in webhook payload"
+        )
 
-            url = f"https://graph.facebook.com/v21.0/{meta_settings.WHATSAPP_PHONE_NUMBER_ID}/messages"
-            headers = {
-                "Authorization": f"Bearer {meta_settings.WHATSAPP_ACCESS_TOKEN}",
-                "Content-Type": "application/json",
-            }
-            payload = {
-                "messaging_product": "whatsapp",
-                "to": f"{sender}",
-                "type": "template",
-                "template": {
-                    "name": "hello_world",
-                    "language": {"code": "en_US"},
-                },
-            }
+    # Manage session per user
+    redis_session = RedisSession(from_number)
 
-            async with httpx.AsyncClient() as client:
-                resp = await client.post(
-                    url, headers=headers, json=payload, timeout=10.0
-                )
-                resp.raise_for_status()
-    except KeyError as e:
-        print("Webhook parsing error:", e)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid webhook payload"
+    if not redis_session.load_session():
+        ad_destination = await message_manager.get_destination_by_message(body)
+        actual_session = {
+            "state": "getting_ad_destination",
+            "destination": ad_destination,
+            "num_travelers": 0,
+            "num_underage_travelers": 0,
+            "departure_location": None,
+            "iata_code": None,
+            "pdf_url": None,
+            "count_requests": 1,
+        }
+
+        if actual_session.get("destination") != "unknown":
+            # send initial greeting + first question
+            actual_session["state"] = "asking_num_travelers"
+            await send_whatsapp_text(
+                from_number,
+                "¡Hola! 👋🏻 Somos Agos y Meli de Etnia Viajes ✨\n\n"
+                f"Nos escribiste por un paquete a: {ad_destination}.\n"
+                "Contame ¿cuántas personas viajan? Si hay menores por favor especificá cuántos.",
+            )
+            redis_session.save_session(actual_session)
+            return {"status": "ok"}
+        else:
+            raise HTTPException(
+                status_code=400, detail="Destination not recognized in message"
+            )
+
+    # if a session exists, use it
+    if redis_session.session:
+        actual_session = redis_session.session
+        actual_session["count_requests"] += 1
+
+    state = redis_session.state
+
+    if state == "asking_num_travelers":
+
+        num_travelers_dict = await message_manager.extract_number_of_persons(body)
+
+        if not num_travelers_dict or num_travelers_dict["total"] < 1:
+
+            actual_session["state"] = "handoff_to_agent"
+            redis_session.save_session(actual_session)
+            return await send_whatsapp_text(
+                from_number,
+                "Para ayudarte mejor, tu asesor de Etnia Viajes te ayudará con este paquete.",
+            )
+
+        actual_session["num_travelers"] = num_travelers_dict["adults"]
+        actual_session["num_underage_travelers"] = num_travelers_dict["minors"]
+
+        actual_session["state"] = "asking_departure"
+        redis_session.save_session(actual_session)
+
+        await send_whatsapp_text(
+            from_number, "Perfecto. ¿Desde dónde te gustaría salir?"
         )
-    except httpx.HTTPStatusError as e:
-        print("Sending message failed:", e)
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to send message"
+        return {"status": "ok"}
+
+    if state == "asking_departure":
+
+        actual_session["departure_location"] = body
+
+        departure_iata = await message_manager.get_iata_code(body)
+
+        actual_session["iata_code"] = departure_iata
+
+        if not departure_iata:
+
+            actual_session["state"] = "handoff_to_agent"
+            redis_session.save_session(actual_session)
+            return await send_whatsapp_text(
+                from_number,
+                "Tu asesor de Etnia Viajes se contactará en breve. Muchas gracias.",
+            )
+
+        offer_link, file_name = await message_manager.get_offer_link(actual_session)
+
+        if not offer_link:
+            actual_session["state"] = "handoff_to_agent"
+            redis_session.save_session(actual_session)
+            return await send_whatsapp_text(
+                from_number, "Tu asesor de Etnia Viajes te ayudará con este paquete."
+            )
+
+        actual_session["pdf_url"] = offer_link
+
+        redis_session.save_session(actual_session)
+
+        await send_whatsapp_text(
+            from_number,
+            "Perfecto encontramos el paquete ideal para vos 🛩️",
+            media=offer_link,
+            file_name=file_name,
         )
-    except Exception as e:
-        print("Webhook error:", e)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error",
-        )
-    return "OK"
+
+        actual_session["state"] = "handoff_to_agent"
+        redis_session.save_session(actual_session)
+
+        return {"status": "ok"}
+
+    if actual_session["count_requests"] > 10 or state == "handoff_to_agent":
+        return {"status": "400", "detail": "Session ended or max requests reached"}
+
+    return {"status": "ok"}
