@@ -2,7 +2,7 @@
 .env
 __pycache__
 .pytest_cache
-app/etc/secrets/
+etc/secrets/
 app/__pycache__
 app/session/__pycache__
 app/utils/__pycache__

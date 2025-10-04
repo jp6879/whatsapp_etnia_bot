@@ -159,7 +159,7 @@ async def whatsapp_webhook(request: Request):
 
         await send_whatsapp_text(
             from_number,
-            "Perfecto encontramos el paquete ideal para vos 🛩️",
+            "Encontramos el paquete ideal para vos 🛩️",
             media=offer_link,
             file_name=file_name,
         )
