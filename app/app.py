@@ -1,8 +1,9 @@
-import json
-from fastapi import FastAPI, Request, Header, HTTPException
+from datetime import datetime, time
+import pytz
+from fastapi import FastAPI, Request, HTTPException
 import requests
 from app.config import wpp_settings
-from app.session.session import RedisSession
+from app.session.session import RedisSessionDep
 from app.utils.message_manager import MessageManager
 import io
 import base64
@@ -53,7 +54,7 @@ async def send_whatsapp_text(
 
 
 @app.post("/webhook")
-async def whatsapp_webhook(request: Request):
+async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
     data = await request.json()
     from_number = data.get("From")
     body = data.get("Body", "").strip()
@@ -64,9 +65,6 @@ async def whatsapp_webhook(request: Request):
             status_code=400, detail="Missing From number or Body in webhook payload"
         )
 
-    # Manage session per user
-    redis_session = RedisSession(from_number)
-
     if not redis_session.load_session():
         ad_destination = await message_manager.get_destination_by_message(body)
         actual_session = {
@@ -76,7 +74,9 @@ async def whatsapp_webhook(request: Request):
             "num_underage_travelers": 0,
             "departure_location": None,
             "iata_code": None,
-            "pdf_url": None,
+            "date_of_contact": datetime.now(
+                pytz.timezone("America/Argentina/Buenos_Aires")
+            ).strftime("%Y-%m-%d %H:%M"),
             "count_requests": 1,
         }
 
@@ -141,7 +141,7 @@ async def whatsapp_webhook(request: Request):
             redis_session.save_session(actual_session)
             return await send_whatsapp_text(
                 from_number,
-                "Tu asesor de Etnia Viajes se contactará en breve. Muchas gracias.",
+                "Tu asesor de Etnia Viajes te ayudará con este paquete.",
             )
 
         offer_link, file_name = await message_manager.get_offer_link(actual_session)
@@ -153,15 +153,18 @@ async def whatsapp_webhook(request: Request):
                 from_number, "Tu asesor de Etnia Viajes te ayudará con este paquete."
             )
 
-        actual_session["pdf_url"] = offer_link
-
         redis_session.save_session(actual_session)
 
         await send_whatsapp_text(
             from_number,
-            "Encontramos el paquete ideal para vos 🛩️",
+            "Te envío el paquete de la promoción que te puede interesar 🛩️",
             media=offer_link,
             file_name=file_name,
+        )
+
+        await send_whatsapp_text(
+            from_number,
+            "En caso de no alinearse con lo que buscás o querés un paquete a medida avisame y tu asesor de Etnia Viajes se contactará en breve para ayudarte personalmente. ¡Muchas gracias! 😊",
         )
 
         actual_session["state"] = "handoff_to_agent"
