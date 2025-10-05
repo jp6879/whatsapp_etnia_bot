@@ -150,7 +150,9 @@ class MessageManager:
         b64 = base64.b64encode(fh.read()).decode("utf-8")
         return f"data:{mime_type};base64,{b64}"
 
-    async def get_offer_link(self, actual_session) -> tuple[str, str] | None:
+    async def get_offer_link(
+        self, actual_session
+    ) -> tuple[str, str] | tuple[None, None]:
         service = build_drive_service()
         files = await list_files_in_folder(service, gdrive_settings.FOLDER_ID)
         num_travelers = actual_session.get("num_travelers")
@@ -165,7 +167,7 @@ class MessageManager:
         ]
 
         if len(filtered_files) == 0:
-            return None
+            return None, None
 
         file_to_download = None
 
@@ -189,7 +191,7 @@ class MessageManager:
                 service, file_to_download
             ), file_to_download.get("name")
         else:
-            return None
+            return None, None
 
     async def extract_number_of_persons(self, text: str) -> dict:
         """Extract number of adults, minors and total from a short Spanish travel text.

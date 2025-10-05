@@ -141,7 +141,7 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
             await redis_session.save_session(actual_session)
             return await send_whatsapp_text(
                 from_number,
-                "Tu asesor de Etnia Viajes te ayudará con este paquete.",
+                "Tu asesor de Etnia Viajes se contactará para ayudarte con este paquete.",
             )
 
         offer_link, file_name = await message_manager.get_offer_link(actual_session)
@@ -150,7 +150,8 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
             actual_session["state"] = "handoff_to_agent"
             await redis_session.save_session(actual_session)
             return await send_whatsapp_text(
-                from_number, "Tu asesor de Etnia Viajes te ayudará con este paquete."
+                from_number,
+                "Tu asesor de Etnia Viajes se contactará para ayudarte con este paquete.",
             )
 
         await redis_session.save_session(actual_session)
