@@ -20,32 +20,39 @@ class RedisSession:
         return self.SESSION_PREFIX + self.from_number
 
     async def load_session(self) -> bool:
-        """Load session from Redis. Returns True if a session was loaded, False otherwise.
-
-        When loaded, sets `self.session` to the dict and `self.state` to session['state'] if present.
-        """
+        """Load session from Redis. Returns True if a session was loaded, False otherwise."""
         key = self.get_session_key()
-        raw = async_redis.get(key)
-        if raw:
-            try:
+        try:
+            raw = await async_redis.get(key)
+            if raw:
                 self.session = json.loads(raw)
                 self.state = self.session.get("state", "waiting")
-            except Exception:
-                self.session = None
-                self.state = "waiting"
+                return True
+            return False
+        except Exception as e:
+            print(f"Error loading session: {e}")
+            self.session = None
+            self.state = "waiting"
+            try:
                 await async_redis.delete(key)
-                return False
-            return True
-        return False
+            except Exception:
+                pass
+            return False
 
     async def save_session(self, session: dict):
         key = self.get_session_key()
         self.session = session
         self.state = session.get("state", self.state)
-        await async_redis.set(key, json.dumps(session))
+        try:
+            await async_redis.set(key, json.dumps(session))
+        except Exception as e:
+            print(f"Error saving session: {e}")
 
     async def clear_session(self):
-        await async_redis.delete(self.SESSION_PREFIX + self.from_number)
+        try:
+            await async_redis.delete(self.get_session_key())
+        except Exception as e:
+            print(f"Error clearing session: {e}")
 
 
 async def get_session(request: Request) -> RedisSession:
