@@ -65,7 +65,7 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
             status_code=400, detail="Missing From number or Body in webhook payload"
         )
 
-    if not redis_session.load_session():
+    if not await redis_session.load_session():
         ad_destination = await message_manager.get_destination_by_message(body)
         actual_session = {
             "state": "getting_ad_destination",
@@ -89,7 +89,7 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
                 f"Nos escribiste por un paquete a: {ad_destination}.\n"
                 "Contame ¿cuántas personas viajan? Si hay menores por favor especificá cuántos.",
             )
-            redis_session.save_session(actual_session)
+            await redis_session.save_session(actual_session)
             return {"status": "ok"}
         else:
             raise HTTPException(
@@ -110,7 +110,7 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
         if not num_travelers_dict or num_travelers_dict["total"] < 1:
 
             actual_session["state"] = "handoff_to_agent"
-            redis_session.save_session(actual_session)
+            await redis_session.save_session(actual_session)
             return await send_whatsapp_text(
                 from_number,
                 "Para ayudarte mejor, tu asesor de Etnia Viajes te ayudará con este paquete.",
@@ -120,7 +120,7 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
         actual_session["num_underage_travelers"] = num_travelers_dict["minors"]
 
         actual_session["state"] = "asking_departure"
-        redis_session.save_session(actual_session)
+        await redis_session.save_session(actual_session)
 
         await send_whatsapp_text(
             from_number, "Perfecto. ¿Desde dónde te gustaría salir?"
@@ -138,7 +138,7 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
         if not departure_iata:
 
             actual_session["state"] = "handoff_to_agent"
-            redis_session.save_session(actual_session)
+            await redis_session.save_session(actual_session)
             return await send_whatsapp_text(
                 from_number,
                 "Tu asesor de Etnia Viajes te ayudará con este paquete.",
@@ -148,12 +148,12 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
 
         if not offer_link:
             actual_session["state"] = "handoff_to_agent"
-            redis_session.save_session(actual_session)
+            await redis_session.save_session(actual_session)
             return await send_whatsapp_text(
                 from_number, "Tu asesor de Etnia Viajes te ayudará con este paquete."
             )
 
-        redis_session.save_session(actual_session)
+        await redis_session.save_session(actual_session)
 
         await send_whatsapp_text(
             from_number,
@@ -168,7 +168,7 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
         )
 
         actual_session["state"] = "handoff_to_agent"
-        redis_session.save_session(actual_session)
+        await redis_session.save_session(actual_session)
 
         return {"status": "ok"}
 
