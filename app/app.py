@@ -73,7 +73,7 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
             "num_travelers": 0,
             "num_underage_travelers": 0,
             "departure_location": None,
-            "iata_code": None,
+            "departure_iata_code": None,
             "date_of_contact": datetime.now(
                 pytz.timezone("America/Argentina/Buenos_Aires")
             ).strftime("%Y-%m-%d %H:%M"),
@@ -85,9 +85,9 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
             actual_session["state"] = "asking_num_travelers"
             await send_whatsapp_text(
                 from_number,
-                "¡Hola! 👋🏻 Somos Agos y Meli de Etnia Viajes ✨\n\n"
-                f"Nos escribiste por un paquete a: {ad_destination}.\n"
-                "Contame ¿cuántas personas viajan? Si hay menores por favor especificá cuántos.",
+                "¡Hola Viajero! 👋🏻 Somos Agos y Meli de Etnia Viajes ✨\n\n"
+                f"Nos escribiste por un viaje a: {ad_destination}.\n"
+                "Contame ¿para cuántas personas te interesa? Si hay menores en el grupo, decinos cuántos.",
             )
             await redis_session.save_session(actual_session)
             return {"status": "ok"}
@@ -113,7 +113,7 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
             await redis_session.save_session(actual_session)
             return await send_whatsapp_text(
                 from_number,
-                "Para ayudarte mejor, tu asesor de Etnia Viajes te ayudará con este paquete.",
+                "En breve te contactamos para encontrar el paquete ideal para vos. ¡Gracias! 😊",
             )
 
         actual_session["num_travelers"] = num_travelers_dict["adults"]
@@ -133,7 +133,7 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
 
         departure_iata = await message_manager.get_iata_code(body)
 
-        actual_session["iata_code"] = departure_iata
+        actual_session["departure_iata_code"] = departure_iata
 
         if not departure_iata:
 
@@ -141,7 +141,7 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
             await redis_session.save_session(actual_session)
             return await send_whatsapp_text(
                 from_number,
-                "Tu asesor de Etnia Viajes se contactará para ayudarte con este paquete.",
+                "En breve te contactamos para encontrar el paquete ideal para vos. ¡Gracias! 😊",
             )
 
         offer_link, file_name = await message_manager.get_offer_link(actual_session)
@@ -151,21 +151,21 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
             await redis_session.save_session(actual_session)
             return await send_whatsapp_text(
                 from_number,
-                "Tu asesor de Etnia Viajes se contactará para ayudarte con este paquete.",
+                "En breve te contactamos para encontrar el paquete ideal para vos. ¡Gracias! 😊",
             )
 
         await redis_session.save_session(actual_session)
 
         await send_whatsapp_text(
             from_number,
-            "Te envío el paquete de la promoción que te puede interesar 🛩️",
+            "Te envío una propuesta ideal para vos 🛩️",
             media=offer_link,
             file_name=file_name,
         )
 
         await send_whatsapp_text(
             from_number,
-            "En caso de no alinearse con lo que buscás o querés un paquete a medida avisame y tu asesor de Etnia Viajes se contactará en breve para ayudarte personalmente. ¡Muchas gracias! 😊",
+            "✨ Decime si esta opción es la que buscás o si preferís que la acomodemos (fecha, hotel, compañía), o si querés que te enviemos otras opciones.",
         )
 
         actual_session["state"] = "handoff_to_agent"

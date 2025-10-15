@@ -158,12 +158,12 @@ class MessageManager:
         num_travelers = actual_session.get("num_travelers")
         num_underage_travelers = actual_session.get("num_underage_travelers")
 
-        # Filter files: ensure both destination and iata code appear in the file name (case-insensitive).
+        # Filter files: ensure both destination and departure iata code appear in the file name (case-insensitive).
         filtered_files = [
             f
             for f in files
             if actual_session["destination"].lower() in f.get("name").lower()
-            and actual_session["iata_code"].lower() in f.get("name").lower()
+            and actual_session["departure_iata_code"].lower() in f.get("name").lower()
         ]
 
         if len(filtered_files) == 0:
