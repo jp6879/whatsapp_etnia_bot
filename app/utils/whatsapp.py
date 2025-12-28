@@ -11,6 +11,7 @@ class SessionState(StrEnum):
     GETTING_AD_DESTINATION = "getting_ad_destination"
     ASKING_NUM_TRAVELERS = "asking_num_travelers"
     ASKING_DEPARTURE = "asking_departure"
+    ASKING_DEPARTURE_DATE = "asking_departure_date"
     # Handoff states - conversation ends and agent takes over
     HANDOFF_WITH_OFFER = "handoff_to_agent_with_offer_sent"
     HANDOFF_NO_OFFER = "handoff_to_agent_without_sending_offer"
