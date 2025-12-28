@@ -51,6 +51,7 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
         actual_session = {
             "state": SessionState.GETTING_AD_DESTINATION,
             "destination": ad_destination,
+            "num_travelers_message": None,
             "num_travelers": 0,
             "num_underage_travelers": 0,
             "departure_location": None,
@@ -86,6 +87,7 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
 
     if state == SessionState.ASKING_NUM_TRAVELERS:
 
+        actual_session["num_travelers_message"] = body
         num_travelers_dict = await message_manager.extract_number_of_persons(body)
 
         if not num_travelers_dict or num_travelers_dict["total"] < 1:
