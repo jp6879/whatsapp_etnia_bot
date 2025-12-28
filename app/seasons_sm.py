@@ -15,14 +15,6 @@ class SeasonalSM:
         num_travelers = actual_session.get("num_travelers")
         num_underage_travelers = actual_session.get("num_underage_travelers")
 
-        if num_travelers != 2 or num_underage_travelers != 0:
-            actual_session["state"] = SessionState.HANDOFF_NO_OFFER
-            await send_whatsapp_text(
-                from_number,
-                "En breve te contactamos para encontrar el paquete ideal para vos. ¡Gracias! 😊",
-            )
-            return actual_session
-
         if state == SessionState.ASKING_DEPARTURE:
             actual_session["state"] = SessionState.ASKING_DEPARTURE_DATE
             await send_whatsapp_text(
@@ -34,6 +26,14 @@ class SeasonalSM:
             month = self.message_manager.get_month_from_message(body)
 
             if not month:
+                actual_session["state"] = SessionState.HANDOFF_NO_OFFER
+                await send_whatsapp_text(
+                    from_number,
+                    "En breve te contactamos para encontrar el paquete ideal para vos. ¡Gracias! 😊",
+                )
+                return actual_session
+
+            if num_travelers != 2 or num_underage_travelers != 0:
                 actual_session["state"] = SessionState.HANDOFF_NO_OFFER
                 await send_whatsapp_text(
                     from_number,
