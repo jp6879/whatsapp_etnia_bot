@@ -100,6 +100,21 @@ class MessageManager:
         "MDP": ["mar del plata", "mdp", "mar del plata ciudad"],
     }
 
+    MONTHS = {
+        "enero": ["01", "enero", "ene"],
+        "febrero": ["02", "febrero", "feb"],
+        "marzo": ["03", "marzo", "mar"],
+        "abril": ["04", "abril", "abr"],
+        "mayo": ["05", "mayo", "may"],
+        "junio": ["06", "junio", "jun"],
+        "julio": ["07", "julio", "jul"],
+        "agosto": ["08", "agosto", "ago"],
+        "septiembre": ["09", "septiembre", "sep", "setiembre"],
+        "octubre": ["10", "octubre", "oct"],
+        "noviembre": ["11", "noviembre", "nov"],
+        "diciembre": ["12", "diciembre", "dic"],
+    }
+
     def __init__(self):
         self.encoded_ads = load_ads_config()
 
@@ -192,6 +207,32 @@ class MessageManager:
             ), file_to_download.get("name")
         else:
             return None, None
+
+    async def get_seassonal_offer_link(self, actual_session):
+        service = build_drive_service()
+        files = await list_files_in_folder(service, gdrive_settings.FOLDER_ID_SEASONAL)
+        num_travelers = actual_session.get("num_travelers")
+        num_underage_travelers = actual_session.get("num_underage_travelers")
+        month = actual_session.get("departure_month")
+        departure = actual_session.get("departure_iata_code")
+
+        if not num_underage_travelers:
+            filtered_files = [
+                f
+                for f in files
+                if departure.lower() in f.get("name").lower()
+                and month in f.get("name").lower()
+                and f"{num_travelers} adultos" in f.get("name").lower()
+            ]
+
+        if len(filtered_files) == 0:
+            return None, None
+
+        file_to_download = filtered_files[0]
+
+        return self._download_file_as_base64(
+            service, file_to_download
+        ), file_to_download.get("name")
 
     async def extract_number_of_persons(self, text: str) -> dict:
         """Extract number of adults, minors and total from a short Spanish travel text.
@@ -384,5 +425,15 @@ class MessageManager:
             window_before = text[max(0, s - 20) : s]
             if re.search(r"somos", window_before) or re.search(r"viaj", window_before):
                 return num
+
+        return None
+
+    def get_month_from_message(self, message: str) -> str | None:
+        text_norm = self.normalize_text(message)
+
+        for month, variants in self.MONTHS.items():
+            for variant in variants:
+                if variant in text_norm:
+                    return month
 
         return None

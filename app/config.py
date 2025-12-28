@@ -26,6 +26,8 @@ class GoogleDriveSettings(BaseSettings):
     SCOPES: list[str]
     ADS_FILE_PATH: str
     FOLDER_ID: str
+    FOLDER_ID_SEASONAL: str
+    FOLDER_ID_GRUPAL: str
 
     model_config = _base_config
 

@@ -1,13 +1,13 @@
-from datetime import datetime, time
+from datetime import datetime
 import pytz
 from fastapi import FastAPI, Request, HTTPException
-import requests
-from app.config import wpp_settings
 from app.session.session import RedisSessionDep
 from app.utils.message_manager import MessageManager
+from app.utils.whatsapp import SessionState, send_whatsapp_text
 import io
 import base64
 from googleapiclient.http import MediaIoBaseDownload
+from app.seasons_sm import SeasonalSM
 
 
 def download_file_as_base64(service, file_id, mime_type="application/octet-stream"):
@@ -31,26 +31,7 @@ def download_file_as_base64(service, file_id, mime_type="application/octet-strea
 
 app = FastAPI()
 message_manager = MessageManager()
-
-WPP_ADAPTER_URL = wpp_settings.WPP_ADAPTER_URL
-
-
-async def send_whatsapp_text(
-    to_whatsapp: str, body: str, media: str = None, file_name: str = None
-):
-    payload = {
-        "to": to_whatsapp,
-        "message": body,
-        "authKey": wpp_settings.AUTH_SESSION_KEY,
-    }
-    if media:
-        payload["mediaUrl"] = media
-        payload["fileName"] = file_name
-    try:
-        requests.post(WPP_ADAPTER_URL, json=payload)
-    except Exception as e:
-        print("Error sending message via WPPConnect:", e)
-        raise
+seasonal_sm = SeasonalSM(message_manager)
 
 
 @app.post("/webhook")
@@ -68,7 +49,7 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
     if not await redis_session.load_session():
         ad_destination = await message_manager.get_destination_by_message(body)
         actual_session = {
-            "state": "getting_ad_destination",
+            "state": SessionState.GETTING_AD_DESTINATION,
             "destination": ad_destination,
             "num_travelers": 0,
             "num_underage_travelers": 0,
@@ -82,7 +63,7 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
 
         if actual_session.get("destination") != "unknown":
             # send initial greeting + first question
-            actual_session["state"] = "asking_num_travelers"
+            actual_session["state"] = SessionState.ASKING_NUM_TRAVELERS
             await send_whatsapp_text(
                 from_number,
                 "¡Hola Viajero! 👋🏻 Somos Agos y Meli de Etnia Viajes ✨\n\n"
@@ -103,13 +84,13 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
 
     state = redis_session.state
 
-    if state == "asking_num_travelers":
+    if state == SessionState.ASKING_NUM_TRAVELERS:
 
         num_travelers_dict = await message_manager.extract_number_of_persons(body)
 
         if not num_travelers_dict or num_travelers_dict["total"] < 1:
 
-            actual_session["state"] = "handoff_to_agent"
+            actual_session["state"] = SessionState.HANDOFF_NO_TRAVELERS
             await redis_session.save_session(actual_session)
             return await send_whatsapp_text(
                 from_number,
@@ -119,7 +100,7 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
         actual_session["num_travelers"] = num_travelers_dict["adults"]
         actual_session["num_underage_travelers"] = num_travelers_dict["minors"]
 
-        actual_session["state"] = "asking_departure"
+        actual_session["state"] = SessionState.ASKING_DEPARTURE
         await redis_session.save_session(actual_session)
 
         await send_whatsapp_text(
@@ -127,27 +108,50 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
         )
         return {"status": "ok"}
 
-    if state == "asking_departure":
+    if (
+        state == SessionState.ASKING_DEPARTURE
+        or state == SessionState.ASKING_DEPARTURE_DATE
+    ):
+        if (
+            actual_session["departure_location"] is None
+            and actual_session["departure_iata_code"] is None
+        ):
+            actual_session["departure_location"] = body
+            departure_iata = await message_manager.get_iata_code(body)
+            actual_session["departure_iata_code"] = departure_iata
 
-        actual_session["departure_location"] = body
+            if not departure_iata:
+                actual_session["state"] = SessionState.HANDOFF_NO_DEPARTURE
+                await redis_session.save_session(actual_session)
+                return await send_whatsapp_text(
+                    from_number,
+                    "En breve te contactamos para encontrar el paquete ideal para vos. ¡Gracias! 😊",
+                )
 
-        departure_iata = await message_manager.get_iata_code(body)
-
-        actual_session["departure_iata_code"] = departure_iata
-
-        if not departure_iata:
-
-            actual_session["state"] = "handoff_to_agent"
-            await redis_session.save_session(actual_session)
-            return await send_whatsapp_text(
-                from_number,
-                "En breve te contactamos para encontrar el paquete ideal para vos. ¡Gracias! 😊",
+        if actual_session.get("destination") == "Puerto Iguazú":
+            actual_session = await seasonal_sm.seasonal_state_machine_workflow(
+                actual_session, from_number, body
             )
+            await redis_session.save_session(actual_session)
+
+            if actual_session.get("state") == SessionState.HANDOFF_WITH_OFFER:
+                return await send_whatsapp_text(
+                    from_number,
+                    "¡Excelente! Ahora te enviamos el paquete ideal para vos. ¡Gracias! 😊",
+                    media=seasonal_sm.offer_link,
+                    file_name=seasonal_sm.file_name,
+                )
+                await send_whatsapp_text(
+                    from_number,
+                    "✨ Decime si esta opción es la que buscás o si preferís que la acomodemos (fecha, hotel, compañía), o si querés que te enviemos otras opciones.",
+                )
+
+            return {"status": "ok"}
 
         offer_link, file_name = await message_manager.get_offer_link(actual_session)
 
         if not offer_link:
-            actual_session["state"] = "handoff_to_agent"
+            actual_session["state"] = SessionState.HANDOFF_NO_OFFER
             await redis_session.save_session(actual_session)
             return await send_whatsapp_text(
                 from_number,
@@ -168,12 +172,12 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
             "✨ Decime si esta opción es la que buscás o si preferís que la acomodemos (fecha, hotel, compañía), o si querés que te enviemos otras opciones.",
         )
 
-        actual_session["state"] = "handoff_to_agent"
+        actual_session["state"] = SessionState.HANDOFF_WITH_OFFER
         await redis_session.save_session(actual_session)
 
         return {"status": "ok"}
 
-    if actual_session["count_requests"] > 10 or state == "handoff_to_agent":
+    if actual_session["count_requests"] > 15 or state in SessionState.handoff_states():
         return {"status": "400", "detail": "Session ended or max requests reached"}
 
     return {"status": "ok"}
