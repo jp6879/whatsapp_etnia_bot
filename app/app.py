@@ -66,7 +66,7 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
             actual_session["state"] = SessionState.ASKING_NUM_TRAVELERS
             await send_whatsapp_text(
                 from_number,
-                "¡Hola Viajero! 👋🏻 Somos Agos y Meli de Etnia Viajes ✨\n\n"
+                "¡Hola Viajero! 👋🏻 Somos Agos y Meli de Etnia Viajes ✨\n"
                 f"Nos escribiste por un viaje a: {ad_destination}.\n"
                 "Contame ¿para cuántas personas te interesa? Si hay menores en el grupo, decinos cuántos.",
             )
@@ -135,9 +135,9 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
             await redis_session.save_session(actual_session)
 
             if actual_session.get("state") == SessionState.HANDOFF_WITH_OFFER:
-                return await send_whatsapp_text(
+                await send_whatsapp_text(
                     from_number,
-                    "¡Excelente! Ahora te enviamos el paquete ideal para vos. ¡Gracias! 😊",
+                    "Te envío una propuesta ideal para vos 🛩️",
                     media=seasonal_sm.offer_link,
                     file_name=seasonal_sm.file_name,
                 )
