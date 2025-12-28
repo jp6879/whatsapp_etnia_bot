@@ -1,3 +1,4 @@
+from datetime import timedelta
 from datetime import datetime
 import pytz
 from fastapi import FastAPI, Request, HTTPException
@@ -84,6 +85,19 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
         actual_session["count_requests"] += 1
 
     state = redis_session.state
+
+    if timedelta(
+        datetime.now(pytz.timezone("America/Argentina/Buenos_Aires")).strftime(
+            "%Y-%m-%d %H:%M"
+        )
+        - datetime.strptime(actual_session.get("date_of_contact"), "%Y-%m-%d %H:%M")
+    ) > timedelta(hours=1):
+        actual_session["state"] = SessionState.HANDOFF_TIMEOUT
+        await redis_session.save_session(actual_session)
+        return {"status": "400", "detail": "Session timeout"}
+
+    if actual_session["count_requests"] > 15 or state in SessionState.handoff_states():
+        return {"status": "400", "detail": "Session ended or max requests reached"}
 
     if state == SessionState.ASKING_NUM_TRAVELERS:
 
@@ -178,8 +192,5 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
         await redis_session.save_session(actual_session)
 
         return {"status": "ok"}
-
-    if actual_session["count_requests"] > 15 or state in SessionState.handoff_states():
-        return {"status": "400", "detail": "Session ended or max requests reached"}
 
     return {"status": "ok"}

@@ -17,6 +17,7 @@ class SessionState(StrEnum):
     HANDOFF_NO_OFFER = "handoff_to_agent_without_sending_offer"
     HANDOFF_NO_DEPARTURE = "handoff_to_agent_without_detecting_departure"
     HANDOFF_NO_TRAVELERS = "handoff_to_agent_without_detecting_num_travelers"
+    HANDOFF_TIMEOUT = "handoff_to_agent_timeout"
 
     @classmethod
     def handoff_states(cls) -> set["SessionState"]:
@@ -26,6 +27,7 @@ class SessionState(StrEnum):
             cls.HANDOFF_NO_OFFER,
             cls.HANDOFF_NO_DEPARTURE,
             cls.HANDOFF_NO_TRAVELERS,
+            cls.HANDOFF_TIMEOUT,
         }
 
 
