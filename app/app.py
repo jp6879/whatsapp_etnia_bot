@@ -87,9 +87,7 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
     state = redis_session.state
 
     if timedelta(
-        datetime.now(pytz.timezone("America/Argentina/Buenos_Aires")).strftime(
-            "%Y-%m-%d %H:%M"
-        )
+        datetime.now(pytz.timezone("America/Argentina/Buenos_Aires"))
         - datetime.strptime(actual_session.get("date_of_contact"), "%Y-%m-%d %H:%M")
     ) > timedelta(hours=1):
         actual_session["state"] = SessionState.HANDOFF_TIMEOUT
