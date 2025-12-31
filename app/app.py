@@ -40,6 +40,7 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
     data = await request.json()
     from_number = data.get("From")
     body = data.get("Body", "").strip()
+    name = data.get("Name", "").strip()
     print(f"Received message from {from_number}: {body}")
 
     if not from_number or not body:
@@ -51,6 +52,7 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
         ad_destination = await message_manager.get_destination_by_message(body)
         actual_session = {
             "state": SessionState.GETTING_AD_DESTINATION,
+            "full_name": name,
             "destination": ad_destination,
             "num_travelers_message": None,
             "num_travelers": 0,
