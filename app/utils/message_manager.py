@@ -32,6 +32,7 @@ class MessageManager:
     NUM_WORDS = {
         "uno": 1,
         "un": 1,
+        "una": 1,
         "dos": 2,
         "tres": 3,
         "cuatro": 4,
@@ -238,16 +239,7 @@ class MessageManager:
         """Extract number of adults, minors and total from a short Spanish travel text.
 
         Returns a dict: {"adults": int, "minors": int, "total": int}
-
-        Strategy (in order):
-        - Find digit mentions (e.g., "5", "3")
-        - Find explicit word-numbers like "tres", "cinco"
-        - Find explicit mentions like "2 adultos", "1 menor", including word-numbers (tres)
-        - Find total mentions like "somos 4", "viajamos 3"
-        - If adults not explicitly present but total and minors found -> adults = total - minors
-        - Optionally fallback to spaCy NER counting PERSON entities when nothing else found
         """
-
         # Convert to lowercase and remove punctuation or special characters
         text_norm = self.normalize_text(text)
 
@@ -268,12 +260,22 @@ class MessageManager:
         minors = 0
 
         # patterns: digits attached to keywords
-        adults += self._num_near_keyword(
-            text_norm,
-            r"adultos?|mayores|adulto|personas|familia de|familia|vamos a ser|grupo de|en total",
-        )
+        # Don't count "X personas" as adults if it's likely the total
+        adult_pattern = r"adultos?|mayores|adulto|grandes?|familia de|familia|vamos a ser|grupo de|en total"
+
+        # Check if "personas" is likely referring to total (when minors are mentioned separately)
+        if not re.search(
+            r"(\d+)\s+personas.*(\d+)\s+(menores?|niñ[oa]s?|chicos?)", text_norm
+        ):
+            # It's safe to count "personas" as adults
+            adult_pattern += r"|personas?"
+
+        adult_pattern += r"|pasajeros?"
+
+        adults += self._num_near_keyword(text_norm, adult_pattern)
         minors += self._num_near_keyword(
-            text_norm, r"niñ[oa]s?|menores?|menor|de \d+ meses|de \d+ años"
+            text_norm,
+            r"niñ[oa]s?|menores?|menor|chicos?|hijos?|bebe|bebes|de \d+ meses|de \d+ años",
         )
 
         total = self._find_total(text_norm)
@@ -282,26 +284,49 @@ class MessageManager:
         adults += a_add
         minors += m_add
 
-        # If we found 'somos X personas' but no minors/adults, try to split by keywords
-        if total and adults == 0 and minors > 0:
-            adults = max(total - minors, 0)
+        # Handle implicit references like "voy con mi marido" or "matrimonio y un hijo"
+        implicit_adults, implicit_minors = self._extract_implicit_persons(text_norm)
+        adults += implicit_adults
+        minors += implicit_minors
 
-        # If no explicit adults/minors but total exists -> assume all adults
-        if total and adults == 0 and minors == 0:
-            adults = total
-
-        if total is None:
-            total = adults + minors
+        # Logic for reconciling total with adults/minors
+        if total is not None:
+            if adults > 0 and minors > 0:
+                # If we have explicit adults and minors, check if they add up to total
+                explicit_sum = adults + minors
+                if explicit_sum > total:
+                    # Trust the explicit breakdown
+                    total = explicit_sum
+                elif explicit_sum < total:
+                    # Could be some implicit persons, keep total as is
+                    total = total
+            elif adults > 0 and minors == 0:
+                # Only adults specified
+                if adults > total:
+                    total = adults
+            elif adults == 0 and minors > 0:
+                # Only minors specified, calculate adults from total
+                adults = max(total - minors, 0)
+            elif adults == 0 and minors == 0:
+                # No explicit breakdown, assume all adults
+                adults = total
         else:
-            # If parsed explicit parts sum to more than a detected 'total', trust the explicit sum
-            if (adults + minors) > total:
-                total = adults + minors
+            # No total found, calculate from parts
+            # Special case: if we only have a bare number with "no hay menores"
+            if re.search(r"\b(\d+)\b.*no hay menores?", text_norm):
+                m = re.search(r"\b(\d+)\b", text_norm)
+                if m and adults == 0:
+                    adults = int(m.group(1))
+
+            total = adults + minors
 
         return {"adults": int(adults), "minors": int(minors), "total": int(total)}
 
     def normalize_text(self, text: str) -> str:
         text = re.sub(r"[^a-záéíóúñ0-9 ]", " ", text.lower())
+        # Handle matrimonio/pareja BEFORE other replacements
         text = text.replace("un matrimonio", "2 adultos")
+        text = text.replace("matrimonio", "2 adultos")
         text = text.replace("una pareja", "2 adultos")
         text = text.replace("dos matrimonios", "4 adultos")
         text = text.replace("dos parejas", "4 adultos")
@@ -309,17 +334,21 @@ class MessageManager:
         text = text.replace("1 pareja", "2 adultos")
         text = text.replace("2 matrimonios", "4 adultos")
         text = text.replace("2 parejas", "4 adultos")
+        # Keep these patterns
+        text = text.replace("un chico", "1 menor")
+        # Adolescents are typically adults for travel purposes
+        text = text.replace("adolescente", "adulto")
+        text = text.replace("adolescentes", "adultos")
         return text
 
     def word_to_num(self, token: str) -> int:
         return self.NUM_WORDS.get(token.lower())
 
     def _num_near_keyword(self, text: str, keyword_pattern: str):
-        """Sum explicit digit mentions that directly precede a keyword (e.g., '2 adultos') or follow it (Viajamos 2)."""
+        """Sum explicit digit mentions that directly precede a keyword (e.g., '2 adultos') or follow it."""
         results = 0
         digit_pattern = re.compile(r"(\d+)\s*(?:" + keyword_pattern + r")")
         for m in digit_pattern.finditer(text):
-            # m.group(1) should always be a string of digits
             results += int(m.group(1))
         if results == 0:
             # Find after the keyword too (e.g., 'familia de 2')
@@ -338,8 +367,14 @@ class MessageManager:
         if not words:
             return 0, 0
 
-        adult_kw = list(re.finditer(r"adultos?|mayores|adulto|en total|viajamos", text))
-        minor_kw = list(re.finditer(r"niñ[oa]s?|menores?|menor", text))
+        adult_kw = list(
+            re.finditer(
+                r"adultos?|mayores|adulto|grandes?|en total|viajamos|pasajeros?", text
+            )
+        )
+        minor_kw = list(
+            re.finditer(r"niñ[oa]s?|menores?|menor|chicos?|hijos?|bebe|bebes", text)
+        )
 
         adults_sum = 0
         minors_sum = 0
@@ -389,11 +424,10 @@ class MessageManager:
         return results
 
     def _find_total(self, text: str) -> int:
-        # patterns like "somos 5 personas", "viajan 3", "viajamos 3"
-        # digits: "somos 5 personas" or "somos 4," or just "somos 4"
-        m = re.search(r"somos\s+(\d+)\b", text)
+        # patterns like "somos 5 personas", "viajan 3", "viajamos 3", "seriamos 4"
+        m = re.search(r"(somos|seriamos|serian|seran)\s+(\d+)\b", text)
         if m:
-            return int(m.group(1))
+            return int(m.group(2))
 
         # digits for travel verb: "viajan 3", "viajamos 2"
         m = re.search(r"viaj\w*\s+(\d+)\b", text)
@@ -402,12 +436,30 @@ class MessageManager:
 
         # patterns like "familia de 4", "grupo de 3", "vamos a ser 5"
         m = re.search(
-            r"(familia|grupo|somos|viajamos|viajan|vamos a ser)\s+de\s+(\d+)\b", text
+            r"(familia|grupo|somos|viajamos|viajan|vamos a ser|seriamos)\s+de\s+(\d+)\b",
+            text,
         )
         if m:
             return int(m.group(2))
 
-        # word-number variants e.g., "somos tres personas", "viajamos tres", "familia de cuatro", "vamos a ser cinco"
+        # Look for "X personas" pattern (e.g., "4 personas")
+        m = re.search(r"(\d+)\s+personas?", text)
+        if m:
+            num = int(m.group(1))
+            # Check if there are explicit minors mentioned separately
+            # If so, this might be the total, not just adults
+            if re.search(r"(\d+)\s+menores?", text) or re.search(
+                r"(\d+)\s+niñ[oa]s?", text
+            ):
+                return num  # Return as total
+            return num
+
+        # Look for "X pasajeros" pattern
+        m = re.search(r"(\d+)\s+pasajeros?", text)
+        if m:
+            return int(m.group(1))
+
+        # word-number variants
         words = self._find_word_numbers(text)
         for num, s, e in words:
             # look after the word for keywords
@@ -419,14 +471,43 @@ class MessageManager:
                 or re.search(r"familia de", window_after)
                 or re.search(r"grupo", window_after)
                 or re.search(r"una familia de", window_after)
+                or re.search(r"pasajeros?", window_after)
             ):
                 return num
-            # or look before the word for 'somos'/'viajamos'
+            # or look before the word for 'somos'/'viajamos'/'seriamos'
             window_before = text[max(0, s - 20) : s]
-            if re.search(r"somos", window_before) or re.search(r"viaj", window_before):
+            if re.search(r"(somos|seriamos|viaj)", window_before):
                 return num
 
         return None
+
+    def _extract_implicit_persons(self, text: str) -> tuple:
+        """Extract implicit person counts from phrases like 'voy con mi marido'.
+
+        Returns tuple (implicit_adults, implicit_minors)
+        """
+        implicit_adults = 0
+        implicit_minors = 0
+
+        # "voy con mi marido" = 2 adults (speaker + spouse)
+        if re.search(r"voy con mi (marido|esposo|esposa|mujer)", text):
+            implicit_adults += 2
+
+        # Check if we've already processed matrimonio -> adultos
+        # to avoid double counting in "matrimonio con X hijos"
+        has_matrimonio_replacement = re.search(r"2 adultos con", text)
+
+        # "mis X hijos" = X minors (if X is already captured, skip)
+        # Only count if not already matched by digit patterns
+        if not has_matrimonio_replacement:
+            m = re.search(r"(\d+) hijos?", text)
+            if m:
+                # Check if this wasn't already counted via _num_near_keyword
+                num_hijos = int(m.group(1))
+                # We'll let _num_near_keyword handle this, so skip here
+                pass
+
+        return implicit_adults, implicit_minors
 
     def get_month_from_message(self, message: str) -> str | None:
         text_norm = self.normalize_text(message)
