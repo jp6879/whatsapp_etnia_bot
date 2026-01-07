@@ -1,3 +1,5 @@
+from pydantic.fields import Field
+from typing import List
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _base_config = SettingsConfigDict(
@@ -15,7 +17,14 @@ class AppSettings(BaseSettings):
 
 
 class RedisSettings(BaseSettings):
-    REDIS_DB_URL: str
+    REDIS_HOST: str
+    REDIS_PORT: int
+    REDIS_USER: str
+    REDIS_PASSWORD: str
+
+    @property
+    def REDIS_DB_URL(self):
+        return f"redis://{self.REDIS_USER}:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}"
 
     model_config = _base_config
 
@@ -23,7 +32,9 @@ class RedisSettings(BaseSettings):
 class GoogleDriveSettings(BaseSettings):
     SERVICE_ACCOUNT_FILE: str
     TOKEN_FILE: str
-    SCOPES: list[str]
+    SCOPES: list[str] = Field(
+        default=["https://www.googleapis.com/auth/drive.readonly"]
+    )
     ADS_FILE_PATH: str
     FOLDER_ID: str
     FOLDER_ID_SEASONAL: str
@@ -32,6 +43,17 @@ class GoogleDriveSettings(BaseSettings):
     model_config = _base_config
 
 
+class GoogleSheetsSettings(BaseSettings):
+    GOOGLE_SHEETS_SPREADSHEET_ID: str
+    GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE: str
+    GOOGLE_SHEETS_SCOPES: List[str] = Field(
+        default=["https://www.googleapis.com/auth/spreadsheets"]
+    )
+
+    model_config = _base_config
+
+
 redis_settings = RedisSettings()
 gdrive_settings = GoogleDriveSettings()
 wpp_settings = AppSettings()
+google_sheets_settings = GoogleSheetsSettings()

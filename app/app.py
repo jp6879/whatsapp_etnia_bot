@@ -92,7 +92,10 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
     contact_time = argentina_tz.localize(
         datetime.strptime(actual_session.get("date_of_contact"), "%Y-%m-%d %H:%M")
     )
-    if datetime.now(argentina_tz) - contact_time > timedelta(hours=1):
+    if (
+        datetime.now(argentina_tz) - contact_time > timedelta(hours=1)
+        and not actual_session.get("state") in SessionState.handoff_states()
+    ):
         actual_session["state"] = SessionState.HANDOFF_TIMEOUT
         await redis_session.save_session(actual_session)
         return {"status": "400", "detail": "Session timeout"}

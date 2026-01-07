@@ -45,6 +45,10 @@ class RedisSession:
         self.state = session.get("state", self.state)
         try:
             await async_redis.set(key, json.dumps(session))
+            # Trigger Celery task to sync with Google Sheets
+            from app.tasks import sync_sheets_with_redis_task
+
+            sync_sheets_with_redis_task.delay()
         except Exception as e:
             print(f"Error saving session: {e}")
 
