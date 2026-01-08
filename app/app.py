@@ -9,6 +9,7 @@ import io
 import base64
 from googleapiclient.http import MediaIoBaseDownload
 from app.seasons_sm import SeasonalSM
+from app.tasks import sync_sheets_with_redis_task
 
 
 def download_file_as_base64(service, file_id, mime_type="application/octet-stream"):
@@ -104,7 +105,6 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
         return {"status": "400", "detail": "Session ended or max requests reached"}
 
     if state == SessionState.ASKING_NUM_TRAVELERS:
-
         actual_session["num_travelers_message"] = body
         num_travelers_dict = await message_manager.extract_number_of_persons(body)
 
@@ -112,6 +112,8 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
 
             actual_session["state"] = SessionState.HANDOFF_NO_TRAVELERS
             await redis_session.save_session(actual_session)
+            # Trigger Celery task to sync with Google Sheets
+            sync_sheets_with_redis_task.delay()
             return await send_whatsapp_text(
                 from_number,
                 "En breve te contactamos para encontrar el paquete ideal para vos. ¡Gracias! 😊",
@@ -122,6 +124,7 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
 
         actual_session["state"] = SessionState.ASKING_DEPARTURE
         await redis_session.save_session(actual_session)
+        sync_sheets_with_redis_task.delay()
 
         await send_whatsapp_text(
             from_number, "Perfecto. ¿Desde dónde te gustaría salir?"
@@ -143,16 +146,21 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
             if not departure_iata:
                 actual_session["state"] = SessionState.HANDOFF_NO_DEPARTURE
                 await redis_session.save_session(actual_session)
+                sync_sheets_with_redis_task.delay()
                 return await send_whatsapp_text(
                     from_number,
                     "En breve te contactamos para encontrar el paquete ideal para vos. ¡Gracias! 😊",
                 )
 
-        if actual_session.get("destination") == "Puerto Iguazú":
+        if (
+            actual_session.get("destination") == "Puerto Iguazú"
+            and actual_session["state"] not in SessionState.handoff_states()
+        ):
             actual_session = await seasonal_sm.seasonal_state_machine_workflow(
                 actual_session, from_number, body
             )
             await redis_session.save_session(actual_session)
+            sync_sheets_with_redis_task.delay()
 
             if actual_session.get("state") == SessionState.HANDOFF_WITH_OFFER:
                 await send_whatsapp_text(
@@ -173,6 +181,7 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
         if not offer_link:
             actual_session["state"] = SessionState.HANDOFF_NO_OFFER
             await redis_session.save_session(actual_session)
+            sync_sheets_with_redis_task.delay()
             return await send_whatsapp_text(
                 from_number,
                 "En breve te contactamos para encontrar el paquete ideal para vos. ¡Gracias! 😊",
@@ -194,6 +203,7 @@ async def whatsapp_webhook(request: Request, redis_session: RedisSessionDep):
 
         actual_session["state"] = SessionState.HANDOFF_WITH_OFFER
         await redis_session.save_session(actual_session)
+        sync_sheets_with_redis_task.delay()
 
         return {"status": "ok"}
 

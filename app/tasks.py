@@ -1,6 +1,6 @@
 from pandas import DataFrame
 from asgiref.sync import async_to_sync
-from redis.asyncio import Redis
+from redis import Redis
 
 from app.celery_app import celery
 from app.config import redis_settings, google_sheets_settings

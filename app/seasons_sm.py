@@ -1,5 +1,6 @@
 from app.utils.message_manager import MessageManager
 from app.utils.whatsapp import send_whatsapp_text, SessionState
+from app.tasks import sync_sheets_with_redis_task
 
 
 class SeasonalSM:
