@@ -542,11 +542,6 @@ class MessageManager:
         with open("etc/secrets/messages_db.json", "r", encoding="utf-8") as f:
             messages_db = json.load(f)
 
-        print(messages_db)
-        print(
-            f"{destination.lower()}_{departure.lower()}_{num_travelers}_{num_underage_travelers}"
-        )
-
         message_to_send = messages_db.get(
             f"{destination.lower()}_{departure.lower()}_{num_travelers}_{num_underage_travelers}"
         )

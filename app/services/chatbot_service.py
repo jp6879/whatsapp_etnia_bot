@@ -8,7 +8,7 @@ from app.utils.message_manager import MessageManager
 from app.utils.whatsapp import send_whatsapp_text
 from app.state_machines.factory import StateMachineFactory
 from app.tasks import sync_sheets_with_redis_task
-from app.utils.logger import logger
+
 
 class ChatbotService:
     def __init__(self, message_manager: MessageManager, factory: StateMachineFactory):
@@ -19,8 +19,6 @@ class ChatbotService:
     async def process_message(
         self, redis_session: RedisSession, from_number: str, body: str, name: str
     ):
-        logger.debug(f"Received message from {from_number}: {body}")
-
         if not await redis_session.load_session():
             return await self._handle_new_session(
                 redis_session, from_number, body, name
