@@ -17,3 +17,9 @@ class GoogleSheetsConnectionError(DBManagerException):
     """Exception raised for errors in the google sheets connection"""
 
     status = status.HTTP_502_BAD_GATEWAY
+
+
+class DestinationNotInPubliclyOfferedError(DBManagerException):
+    """Exception raised for errors in the google sheets connection"""
+
+    status = status.HTTP_400_BAD_REQUEST

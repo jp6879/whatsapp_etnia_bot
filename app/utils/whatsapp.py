@@ -1,35 +1,7 @@
 """WhatsApp messaging utilities and shared state definitions."""
 
-from enum import StrEnum
 import requests
 from app.config import wpp_settings
-
-
-class SessionState(StrEnum):
-    """Conversation states for the WhatsApp bot flow."""
-
-    GETTING_AD_DESTINATION = "getting_ad_destination"
-    ASKING_NUM_TRAVELERS = "asking_num_travelers"
-    ASKING_DEPARTURE = "asking_departure"
-    ASKING_DEPARTURE_DATE = "asking_departure_date"
-    # Handoff states - conversation ends and agent takes over
-    HANDOFF_WITH_OFFER = "handoff_to_agent_with_offer_sent"
-    HANDOFF_NO_OFFER = "handoff_to_agent_without_sending_offer"
-    HANDOFF_NO_DEPARTURE = "handoff_to_agent_without_detecting_departure"
-    HANDOFF_NO_TRAVELERS = "handoff_to_agent_without_detecting_num_travelers"
-    HANDOFF_TIMEOUT = "handoff_to_agent_timeout"
-
-    @classmethod
-    def handoff_states(cls) -> set["SessionState"]:
-        """Returns all states that indicate handoff to human agent."""
-        return {
-            cls.HANDOFF_WITH_OFFER,
-            cls.HANDOFF_NO_OFFER,
-            cls.HANDOFF_NO_DEPARTURE,
-            cls.HANDOFF_NO_TRAVELERS,
-            cls.HANDOFF_TIMEOUT,
-        }
-
 
 WPP_ADAPTER_URL = wpp_settings.WPP_ADAPTER_URL
 

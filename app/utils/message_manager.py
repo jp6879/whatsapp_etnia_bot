@@ -55,50 +55,374 @@ class MessageManager:
         "veinte": 20,
     }
     CITIES = {
-        "BUE": [
-            "buenos aires",
-            "bsas",
-            "bs as",
-            "caba",
-            "bue",
-            "capital federal",
-            "ciudad autonoma de buenos aires",
-            "baires",
-            "buenos aires ciudad",
-            "buenos aires capital",
-            "buenosaires",
+        "AEP": [
+            "aep",
+            "aeroparque",
+            "buenos aires aeroparque",
+            "ciudad de buenos aires",
+            "ciudad de buenos aires capital",
+            "ciudad de buenos aires ciudad",
+            "jorge newbery",
+        ],
+        "AFA": [
+            "afa",
+            "san rafael",
+            "san rafael capital",
+            "san rafael ciudad",
+            "santiago germano",
+        ],
+        "AOL": [
+            "aol",
+            "paso de los libres",
+            "paso de los libres capital",
+            "paso de los libres ciudad",
+        ],
+        "BHI": [
+            "bahia blanca",
+            "bahia blanca capital",
+            "bahia blanca ciudad",
+            "bhi",
+            "comandante espora",
+        ],
+        "BRC": [
+            "bariloche",
+            "bariloche capital",
+            "bariloche ciudad",
+            "brc",
+            "san carlos de bariloche",
+            "tte. luis candelaria",
+        ],
+        "CNQ": [
+            "cnq",
+            "corrientes",
+            "corrientes capital",
+            "corrientes ciudad",
+            "dr. piragine niveyro",
+        ],
+        "COC": [
+            "coc",
+            "comodoro pierrestegui",
+            "concordia",
+            "concordia capital",
+            "concordia ciudad",
         ],
         "COR": [
-            "cordoba",
+            "a.taravella/pajas blancas",
             "cba",
             "cor",
+            "cordoba",
+            "cordoba argentina",
             "cordoba capital",
             "cordoba ciudad",
-            "cordoba argentina",
         ],
-        "MDZ": ["mendoza", "mdz", "mendoza ciudad", "mendoza capital"],
-        "ROS": [
-            "rosario",
-            "ros",
-            "rosario santa fe",
-            "rosario ciudad",
-            "rosario argentina",
+        "CPC": [
+            "aviador .campos/chapelco",
+            "cpc",
+            "san martin de los andes",
+            "san martin de los andes capital",
+            "san martin de los andes ciudad",
         ],
+        "CRD": [
+            "chubut",
+            "comodoro",
+            "comodoro rivadavia",
+            "comodoro rivadavia capital",
+            "comodoro rivadavia ciudad",
+            "crd",
+            "intern.gral. e. mosconi",
+        ],
+        "CTC": [
+            "catamarca",
+            "catamarca capital",
+            "catamarca ciudad",
+            "cnel. felipe varela",
+            "ctc",
+        ],
+        "CUT": ["cut", "cutral-co", "cutral-co capital", "cutral-co ciudad"],
+        "EQS": [
+            "brig. gral. antonio parodi",
+            "eqs",
+            "esquel",
+            "esquel capital",
+            "esquel ciudad",
+        ],
+        "ESQ": ["esquel", "esq"],
+        "EZE": [
+            "baires",
+            "bs as",
+            "bsas",
+            "bue",
+            "buenos aires",
+            "buenos aires capital",
+            "buenos aires ciudad",
+            "buenosaires",
+            "caba",
+            "capital federal",
+            "ciudad autonoma de buenos aires",
+            "eze",
+            "ezeiza",
+            "ezeiza capital",
+            "ezeiza ciudad",
+            "ministro pistarini",
+        ],
+        "FDO": ["fdo", "san fernando", "san fernando capital", "san fernando ciudad"],
+        "FMA": ["el pucu", "fma", "formosa", "formosa capital", "formosa ciudad"],
+        "FTE": [
+            "calafate",
+            "comandante armando tola",
+            "el calafate",
+            "el calafate capital",
+            "el calafate ciudad",
+            "el calafate santa cruz",
+            "fte",
+        ],
+        "GNR": [
+            "arturo humberto illia",
+            "general roca",
+            "general roca capital",
+            "general roca ciudad",
+            "gnr",
+        ],
+        "GPO": ["general pico", "general pico capital", "general pico ciudad", "gpo"],
         "IGR": [
-            "iguazu",
-            "puerto iguazu",
             "igr",
+            "iguazu",
             "iguazú",
+            "my. carlos e. krause",
+            "puerto iguazu",
+            "puerto iguazu capital",
+            "puerto iguazu ciudad",
             "puerto iguazú",
-            "cataratas",
-            "cataratas del iguazu",
         ],
-        "USH": ["ushuaia", "ush", "ushuaia tierra del fuego", "ushuaia argentina"],
-        "SLA": ["salta", "sla", "salta capital", "salta ciudad"],
-        "BRC": ["bariloche", "san carlos de bariloche", "brc", "bariloche ciudad"],
-        "FTE": ["el calafate", "calafate", "fte", "el calafate santa cruz"],
-        "TUC": ["tucuman", "san miguel de tucuman", "tuc", "tucumán"],
+        "IRJ": [
+            "cap. vicente a. almonacid",
+            "irj",
+            "la rioja",
+            "la rioja capital",
+            "la rioja ciudad",
+        ],
+        "JNI": ["jni", "junin", "junin capital", "junin ciudad"],
+        "JUJ": [
+            "gob. horacio guzman",
+            "juj",
+            "jujuy",
+            "jujuy argentina",
+            "jujuy capital",
+            "jujuy ciudad",
+            "san salvador de jujuy",
+            "san salvador de jujuy capital",
+            "san salvador de jujuy ciudad",
+        ],
+        "LGS": [
+            "cdro. ricardo salomon",
+            "lgs",
+            "malargue",
+            "malargue capital",
+            "malargue ciudad",
+        ],
+        "LPG": ["la plata", "la plata capital", "la plata ciudad", "lpg"],
+        "LUQ": [
+            "brig. may. cesar raul ojeda",
+            "luq",
+            "san luis",
+            "san luis capital",
+            "san luis ciudad",
+        ],
         "MDP": ["mar del plata", "mdp", "mar del plata ciudad"],
+        "MDQ": [
+            "astor piazzolla",
+            "mar del plata",
+            "mar del plata capital",
+            "mar del plata ciudad",
+            "mdq",
+        ],
+        "MDZ": [
+            "gob. gabrielli/el plumerillo",
+            "mdz",
+            "mendoza",
+            "mendoza capital",
+            "mendoza ciudad",
+        ],
+        "NEC": ["nec", "necochea", "necochea capital", "necochea ciudad"],
+        "NQN": [
+            "neuquen",
+            "neuquen capital",
+            "neuquen ciudad",
+            "nqn",
+            "presidente peron",
+        ],
+        "OYA": [
+            "diego n. diaz colodrero",
+            "goya",
+            "goya capital",
+            "goya ciudad",
+            "oya",
+        ],
+        "PMY": [
+            "el tehuelche",
+            "pmy",
+            "puerto madryn",
+            "puerto madryn capital",
+            "puerto madryn ciudad",
+        ],
+        "PRA": [
+            "entre rios",
+            "gral. justo j.de urquiza",
+            "parana",
+            "parana capital",
+            "parana ciudad",
+            "pra",
+        ],
+        "PSS": [
+            "lib. gral. j. de san martin",
+            "misiones capital",
+            "posadas",
+            "posadas capital",
+            "posadas ciudad",
+            "pss",
+        ],
+        "RCQ": [
+            "daniel jukic",
+            "rcq",
+            "reconquista",
+            "reconquista capital",
+            "reconquista ciudad",
+        ],
+        "RCU": [
+            "area material rio cuarto",
+            "rcu",
+            "rio cuarto",
+            "rio cuarto capital",
+            "rio cuarto ciudad",
+        ],
+        "REL": [
+            "alte. marcos a. zar",
+            "rel",
+            "trelew",
+            "trelew capital",
+            "trelew ciudad",
+        ],
+        "RES": [
+            "chaco",
+            "chaco capital",
+            "chaco ciudad",
+            "jose de san martin",
+            "res",
+            "resistencia",
+            "resistencia capital",
+            "resistencia ciudad",
+        ],
+        "RGA": [
+            "gob. ramon trejo noel",
+            "rga",
+            "rio grande",
+            "rio grande capital",
+            "rio grande ciudad",
+        ],
+        "RGL": [
+            "pil. civ. norberto fernandez",
+            "rgl",
+            "rio gallegos",
+            "rio gallegos capital",
+            "rio gallegos ciudad",
+            "santa cruz",
+        ],
+        "RHD": [
+            "rhd",
+            "rio hondo",
+            "rio hondo capital",
+            "rio hondo ciudad",
+            "termas de rio hondo",
+        ],
+        "RLO": ["merlo", "merlo capital", "merlo ciudad", "rlo", "valle del conlara"],
+        "ROS": [
+            "islas malvinas",
+            "ros",
+            "rosario",
+            "rosario argentina",
+            "rosario capital",
+            "rosario ciudad",
+        ],
+        "RSA": ["rsa", "santa rosa", "santa rosa capital", "santa rosa ciudad"],
+        "RYO": [
+            "el turbio",
+            "el turbio capital",
+            "el turbio ciudad",
+            "el turbio/28 de noviembre",
+            "ryo",
+        ],
+        "SDE": [
+            "com. de la paz aragones",
+            "santiago del estero",
+            "santiago del estero capital",
+            "santiago del estero ciudad",
+            "sde",
+        ],
+        "SFE": ["santa fe", "santa fe capital", "santa fe ciudad"],
+        "SFN": [
+            "santa fe",
+            "santa fe capital",
+            "santa fe ciudad",
+            "sauce viejo",
+            "sfn",
+        ],
+        "SLA": ["gral. guemes", "salta", "salta capital", "salta ciudad", "sla"],
+        "SRA": ["santa rosa", "la pampa", "la pampa capital", "santa rosa ciudad"],
+        "STT": [
+            "santa teresita",
+            "santa teresita capital",
+            "santa teresita ciudad",
+            "stt",
+        ],
+        "TDL": ["tandil", "tandil capital", "tandil ciudad", "tdl"],
+        "TTG": [
+            "gral. e. mosconi",
+            "tartagal",
+            "tartagal capital",
+            "tartagal ciudad",
+            "ttg",
+        ],
+        "TUC": [
+            "s. miguel de tucuman",
+            "s. miguel de tucuman capital",
+            "s. miguel de tucuman ciudad",
+            "san miguel de tucuman",
+            "tte. benjamin matienzo",
+            "tuc",
+            "tucuman",
+            "tucumán",
+        ],
+        "UAQ": [
+            "domingo faustino sarmiento",
+            "san juan",
+            "san juan capital",
+            "san juan ciudad",
+            "uaq",
+        ],
+        "USH": [
+            "malvinas argentinas",
+            "ush",
+            "ushuaia",
+            "ushuaia argentina",
+            "ushuaia capital",
+            "ushuaia ciudad",
+            "ushuaia tierra del fuego",
+        ],
+        "VDM": [
+            "gobernador castello",
+            "rio negro",
+            "vdm",
+            "viedma",
+            "viedma capital",
+            "viedma ciudad",
+        ],
+        "VGL": ["vgl", "villa gesell", "villa gesell capital", "villa gesell ciudad"],
+        "VME": [
+            "villa reynolds",
+            "villa reynolds capital",
+            "villa reynolds ciudad",
+            "vme",
+        ],
     }
 
     MONTHS = {
@@ -208,6 +532,29 @@ class MessageManager:
             ), file_to_download.get("name")
         else:
             return None, None
+
+    async def get_message_offer(self, actual_session):
+        destination = actual_session.get("destination")
+        num_travelers = actual_session.get("num_travelers")
+        num_underage_travelers = actual_session.get("num_underage_travelers")
+        departure = actual_session.get("departure_iata_code")
+
+        with open("etc/secrets/messages_db.json", "r", encoding="utf-8") as f:
+            messages_db = json.load(f)
+
+        print(messages_db)
+        print(
+            f"{destination.lower()}_{departure.lower()}_{num_travelers}_{num_underage_travelers}"
+        )
+
+        message_to_send = messages_db.get(
+            f"{destination.lower()}_{departure.lower()}_{num_travelers}_{num_underage_travelers}"
+        )
+
+        if not message_to_send:
+            return None
+
+        return message_to_send
 
     async def get_seassonal_offer_link(self, actual_session):
         service = build_drive_service()
@@ -510,11 +857,9 @@ class MessageManager:
         return implicit_adults, implicit_minors
 
     def get_month_from_message(self, message: str) -> str | None:
-        text_norm = self.normalize_text(message)
-
         for month, variants in self.MONTHS.items():
             for variant in variants:
-                if variant in text_norm:
+                if variant in message.lower():
                     return month
 
         return None
