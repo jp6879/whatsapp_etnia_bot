@@ -1,10 +1,10 @@
 from celery import Celery
-from app.config import redis_settings
+from app.config import worker_redis_settings
 
 celery = Celery(
     "difusionwsp",
-    broker=redis_settings.REDIS_DB_URL,
-    backend=redis_settings.REDIS_DB_URL,
+    broker=worker_redis_settings.WORKER_REDIS_DB_URL,
+    backend=worker_redis_settings.WORKER_REDIS_DB_URL,
     include=["app.tasks"],
 )
 

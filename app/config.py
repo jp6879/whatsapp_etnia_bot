@@ -29,6 +29,19 @@ class RedisSettings(BaseSettings):
     model_config = _base_config
 
 
+class WorkerRedisSettings(BaseSettings):
+    WORKER_REDIS_HOST: str
+    WORKER_REDIS_PORT: int
+    WORKER_REDIS_USER: str
+    WORKER_REDIS_PASSWORD: str
+
+    @property
+    def WORKER_REDIS_DB_URL(self):
+        return f"redis://{self.WORKER_REDIS_USER}:{self.WORKER_REDIS_PASSWORD}@{self.WORKER_REDIS_HOST}:{self.WORKER_REDIS_PORT}"
+
+    model_config = _base_config
+
+
 class GoogleDriveSettings(BaseSettings):
     SERVICE_ACCOUNT_FILE: str
     TOKEN_FILE: str
@@ -54,6 +67,7 @@ class GoogleSheetsSettings(BaseSettings):
 
 
 redis_settings = RedisSettings()
+worker_redis_settings = WorkerRedisSettings()
 gdrive_settings = GoogleDriveSettings()
 wpp_settings = AppSettings()
 google_sheets_settings = GoogleSheetsSettings()
