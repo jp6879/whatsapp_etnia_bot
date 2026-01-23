@@ -66,7 +66,7 @@ class SheetsService:
                     .values()
                     .update(
                         spreadsheetId=google_sheets_settings.GOOGLE_SHEETS_SPREADSHEET_ID,
-                        range="A2:K2",
+                        range="B2:L2",
                         valueInputOption="RAW",
                         body={"values": [self.clean_row_for_sheets(row_to_add)]},
                     )
