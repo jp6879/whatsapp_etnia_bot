@@ -41,8 +41,15 @@ def sync_sheets_with_redis_task():
     redis_service = get_redis_service_sync()
     sheets_service = get_sheets_service_sync()
 
-    data = redis_service.get_all_data()
-    df = DataFrame(data).sort_values(by="FECHA", ascending=True).reset_index(drop=True)
-    async_to_sync(sheets_service.update_sheet)(df)
-
-    return {"message": "Sheets updated successfully"}
+    try:
+        data = redis_service.get_all_data()
+        df = (
+            DataFrame(data)
+            .sort_values(by="FECHA", ascending=True)
+            .reset_index(drop=True)
+        )
+        async_to_sync(sheets_service.update_sheet)(df)
+        return {"message": "Sheets updated successfully"}
+    finally:
+        # CRITICAL: Close Redis connection to prevent "max clients" error
+        redis_service.client.close()

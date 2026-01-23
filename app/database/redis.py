@@ -17,9 +17,13 @@ async def get_redis_client():
     )
 
     if not await _redis_client.ping():
+        await _redis_client.aclose()
         raise RedisConnectionError("Redis connection failed")
 
-    return _redis_client
+    try:
+        yield _redis_client
+    finally:
+        await _redis_client.aclose()
 
 
 RedisClientDep = Annotated[Redis, Depends(get_redis_client)]
