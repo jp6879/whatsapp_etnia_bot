@@ -9,7 +9,7 @@ class SheetsService:
 
     def __init__(self, service: Resource):
         self.service = service
-        self.range_used = "A1:K1000"
+        self.range_used = "A1:L1000"
 
     async def get_data_in_dataframe(self) -> pd.DataFrame:
         rows = (
@@ -90,7 +90,7 @@ class SheetsService:
             ):
                 dicts_rows.append(
                     {
-                        "range": f"{chr(65 + i)}{row_index_on_sheet + 2}",
+                        "range": f"{chr(66 + i)}{row_index_on_sheet + 2}",
                         "values": [[value_to_update]],
                     }
                 )
