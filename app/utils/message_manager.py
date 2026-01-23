@@ -539,7 +539,7 @@ class MessageManager:
         num_underage_travelers = actual_session.get("num_underage_travelers")
         departure = actual_session.get("departure_iata_code")
 
-        with open("etc/secrets/messages_db.json", "r", encoding="utf-8") as f:
+        with open("app/etc/secrets/messages_db.json", "r", encoding="utf-8") as f:
             messages_db = json.load(f)
 
         message_to_send = messages_db.get(
