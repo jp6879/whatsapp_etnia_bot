@@ -9,7 +9,7 @@ class SheetsService:
 
     def __init__(self, service: Resource):
         self.service = service
-        self.range_used = "B1:L1000"
+        self.range_used = "A1:L1000"
 
     async def get_data_in_dataframe(self) -> pd.DataFrame:
         rows = (

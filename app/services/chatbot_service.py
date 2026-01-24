@@ -60,9 +60,8 @@ class ChatbotService:
             sync_sheets_with_redis_task.delay()
             return {"status": "ok"}
         else:
-            raise DestinationNotInPubliclyOfferedError(
-                detail="Destination not recognized in message"
-            )
+            # I don't want to rise an error but just return the case that the message is not from a ad
+            return {"status": "400", "detail": "The message is not from a ad"}
 
     async def _handle_existing_session(
         self, redis_session: RedisSession, from_number: str, body: str

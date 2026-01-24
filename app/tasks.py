@@ -3,7 +3,7 @@ from asgiref.sync import async_to_sync
 from redis import Redis
 
 from app.celery_app import celery
-from app.config import worker_redis_settings, google_sheets_settings
+from app.config import redis_settings, google_sheets_settings
 from app.services.redis_services import RedisService
 from app.services.sheets_services import SheetsService
 from google.oauth2 import service_account
@@ -13,10 +13,10 @@ from googleapiclient.discovery import build
 def get_redis_service_sync() -> RedisService:
     """Create Redis service for Celery (using async client with async_to_sync)."""
     client = Redis(
-        host=worker_redis_settings.WORKER_REDIS_HOST,
-        port=worker_redis_settings.WORKER_REDIS_PORT,
-        username=worker_redis_settings.WORKER_REDIS_USER,
-        password=worker_redis_settings.WORKER_REDIS_PASSWORD,
+        host=redis_settings.REDIS_HOST,
+        port=redis_settings.REDIS_PORT,
+        username=redis_settings.REDIS_USER,
+        password=redis_settings.REDIS_PASSWORD,
         decode_responses=True,
     )
     return RedisService(client)
