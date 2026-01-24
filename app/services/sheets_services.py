@@ -114,10 +114,10 @@ class SheetsService:
                 ].index[0]
 
                 # Check if any value is different
-                if any(row_to_update != db_row):
+                if any(row_to_update != db_row[1:]):
                     # Get the list of ValueRange objects for this row
                     row_updates = self._create_update_request(
-                        row_to_update, db_row, row_index_on_sheet
+                        row_to_update, db_row[1:], row_index_on_sheet
                     )
                     all_updates.extend(row_updates)
 
