@@ -448,6 +448,11 @@ class MessageManager:
         ad_info = self.encoded_ads.get(message, {})
         return ad_info.get("ad_destination", "unknown")
 
+    async def get_required_fields_by_message(self, message: str) -> str:
+        """Fast lookup: message -> required data"""
+        ad_info = self.encoded_ads.get(message, {})
+        return ad_info.get("required_fields", [])
+
     async def get_iata_code(self, text: str):
         text_norm = self.normalize_text(text)
 
