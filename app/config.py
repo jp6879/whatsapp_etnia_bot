@@ -49,6 +49,7 @@ class GoogleDriveSettings(BaseSettings):
         default=["https://www.googleapis.com/auth/drive.readonly"]
     )
     ADS_FILE_PATH: str
+    OFFERS_DB_PATH: str
     FOLDER_ID: str
     FOLDER_ID_SEASONAL: str
     FOLDER_ID_GRUPAL: str
