@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import logging
 import pytz
 from app.services.session_service import RedisSession
 from app.core.enums import SessionState
@@ -9,7 +10,7 @@ from app.tasks import sync_sheets_with_redis_task
 from app.services.pre_clasifyer_service import PreClasifyerService
 from app.services.llm_extraction_service import LLMExtractionService
 
-# TODO: Implement the custom exceptions to better debugging and error handling
+logger = logging.getLogger("chatbot")
 
 
 class ChatbotService:
@@ -38,8 +39,15 @@ class ChatbotService:
         self, redis_session: RedisSession, from_number: str, body: str, name: str
     ):
         ad_destination, offer_type = await self.message_manager.get_ad_info(body)
+        logger.debug(
+            "[NEW SESSION] body=%r → destination=%r offer_type=%r",
+            body[:60],
+            ad_destination,
+            offer_type,
+        )
 
         if ad_destination == "unknown":
+            logger.debug("[NEW SESSION] ❌ Destination unknown — rejecting")
             return {
                 "status": "400",
                 "detail": "Destination not found in actual offers",
@@ -83,6 +91,11 @@ class ChatbotService:
         """
         destination = actual_session["destination"]
         name = actual_session.get("full_name", "Viajero")
+        logger.debug(
+            "[STAGE 1→2] Starting offer presentation for destination=%r name=%r",
+            destination,
+            name,
+        )
 
         # ── 1. Greeting ───────────────────────────────────────────────────────
         intro = (
@@ -96,6 +109,7 @@ class ChatbotService:
 
         # ── 2. Send all available offer messages for this destination ─────────
         offers = self.message_manager.get_offers_for_destination(destination)
+        logger.debug("[STAGE 2] Found %d offer(s) for %r", len(offers), destination)
 
         # TODO: Handle no offers case with fully agent to extract information
 
@@ -150,15 +164,22 @@ class ChatbotService:
             return {"status": "400", "detail": "Session ended or max requests reached"}
 
         # ── Guard Agent ───────────────────────────────────────────────────────
-        classification = await self.guard.classify_message(body)
+        guard_context = {
+            "destination": actual_session.get("destination"),
+            "state": str(state),
+        }
+        classification = await self.guard.classify_message(body, context=guard_context)
+        logger.debug("[GUARD] result=%r", classification)
         if not classification.get("is_travel_related") or not classification.get(
             "is_safe"
         ):
-            
+            logger.debug("[GUARD] ❌ Message blocked")
+
             return {"status": "406", "detail": "The message is not acceptable"}
 
         actual_session["messages_history"].append({"role": "user", "content": body})
 
+        logger.debug("[ROUTER] state=%r → routing...", state)
         # ── Route to the correct stage ────────────────────────────────────────
         if state == SessionState.PRESENTING_OFFERS:
             return await self._handle_offer_reply(
@@ -199,6 +220,15 @@ class ChatbotService:
             session=actual_session,
             valid_offer_keys=valid_offer_keys,
             offers_summary=offers_summary,
+        )
+        logger.debug(
+            "[STAGE 2 LLM] offer_accepted=%r accepted_key=%r is_complete=%r travelers=%r departure=%r date=%r",
+            result.offer_accepted,
+            result.accepted_offer_key,
+            result.is_complete,
+            result.num_travelers,
+            result.departure_location,
+            result.date,
         )
 
         actual_session["messages_history"].append(
@@ -261,6 +291,14 @@ class ChatbotService:
     ):
         """Continue extracting missing fields for a custom quote."""
         extraction = await self.extractor.extract(body, actual_session)
+        logger.debug(
+            "[STAGE 3 LLM] is_complete=%r travelers=%r underage=%r departure=%r date=%r",
+            extraction.is_complete,
+            extraction.num_travelers,
+            extraction.num_underage_travelers,
+            extraction.departure_location,
+            extraction.date,
+        )
 
         if extraction.num_travelers is not None:
             actual_session["num_travelers"] = extraction.num_travelers

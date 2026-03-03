@@ -1,20 +1,29 @@
+from collections import defaultdict
+from pydantic import Field
 import json
+import logging
 from dataclasses import dataclass
 from openai import AsyncOpenAI
 from app.config import openai_settings
+from pydantic import BaseModel
+
+logger = logging.getLogger("extractor")
 
 
-@dataclass
-class ExtractionResult:
-    num_travelers: int | None
-    num_underage_travelers: int | None
-    departure_location: str | None
-    date: str | None
-    response_message: str  # Friendly Spanish message to send back to the user
-    is_complete: bool = False  # True when all required fields have been collected
+class ExtractionResult(BaseModel):
+    num_travelers: int | None = Field(default=None)
+    num_underage_travelers: int | None = Field(default=None)
+    departure_location: str | None = Field(default=None)
+    date: str | None = Field(default=None)
+    response_message: str = Field(
+        default=""
+    )  # Friendly Spanish message to send back to the user
+    is_complete: bool = Field(
+        default=False
+    )  # True when all required fields have been collected
     # Populated only by extract_with_offers()
-    offer_accepted: bool = False
-    accepted_offer_key: str | None = None  # e.g. "turquia_2_0"
+    offer_accepted: bool = Field(default=False)
+    accepted_offer_key: str | None = Field(default=None)  # e.g. "turquia_2_0"
 
 
 class LLMExtractionService:
@@ -37,23 +46,23 @@ class LLMExtractionService:
             known_lines.append(f"- Fecha: {session['date']}")
         return "\n".join(known_lines) if known_lines else "Ninguna todavía."
 
-    def _compute_completeness(self, data: dict, session: dict) -> bool:
+    def _compute_completeness(self, data: ExtractionResult, session: dict) -> bool:
         merged_travelers = (
-            data.get("num_travelers")
-            if data.get("num_travelers") is not None
+            data.num_travelers
+            if data.num_travelers is not None
             else session.get("num_travelers")
         )
         merged_underage = (
-            data.get("num_underage_travelers")
-            if data.get("num_underage_travelers") is not None
+            data.num_underage_travelers
+            if data.num_underage_travelers is not None
             else session.get("num_underage_travelers")
         )
         merged_departure = (
-            data.get("departure_location")
-            if data.get("departure_location")
+            data.departure_location
+            if data.departure_location is not None
             else session.get("departure_location")
         )
-        merged_date = data.get("date") if data.get("date") else session.get("date")
+        merged_date = data.date if data.date is not None else session.get("date")
 
         required_fields = session.get("required_fields", [])
         date_required = (
@@ -77,7 +86,7 @@ class LLMExtractionService:
         known_str = self._build_known_str(session)
         history = self.build_messages_history(session)
 
-        response = await self.client.chat.completions.create(
+        response = await self.client.chat.completions.parse(
             model="gpt-4o-mini",
             messages=[
                 {
@@ -94,14 +103,6 @@ class LLMExtractionService:
                         "2. num_underage_travelers — menores de edad; si no se menciona, asumí 0 (requerido)\n"
                         "3. departure_location — ciudad argentina desde donde salen (requerido)\n"
                         "4. date — fecha del viaje, puede ser especifica o un mes únicamente (requerido)\n"
-                        "Devolvé SOLO JSON con este formato exacto:\n"
-                        "{\n"
-                        '  "num_travelers": <entero o null>,\n'
-                        '  "num_underage_travelers": <entero o null>,\n'
-                        '  "departure_location": "<ciudad mencionada por el cliente>" o null,\n'
-                        '  "date": "<mes>" o null,\n'
-                        '  "response_message": "<respuesta amigable; preguntá sólo el PRÓXIMO campo que falta>"\n'
-                        "}\n\n"
                         "Notas importantes:\n"
                         "- No repitas información ya recolectada en tu pregunta.\n"
                         "- Sólo pedí un campo a la vez.\n"
@@ -112,21 +113,16 @@ class LLMExtractionService:
                 *history,
                 {"role": "user", "content": message},
             ],
-            response_format={"type": "json_object"},
+            response_format=ExtractionResult,
             max_tokens=350,
         )
 
-        data = json.loads(response.choices[0].message.content)
+        data = response.choices[0].message.parsed
+        logger.debug("[extract] raw LLM response: %s", data)
         is_complete = self._compute_completeness(data, session)
+        data.is_complete = is_complete
 
-        return ExtractionResult(
-            num_travelers=data.get("num_travelers"),
-            num_underage_travelers=data.get("num_underage_travelers"),
-            departure_location=data.get("departure_location"),
-            date=data.get("date"),
-            response_message=data.get("response_message", ""),
-            is_complete=is_complete,
-        )
+        return data
 
     async def extract_with_offers(
         self,
@@ -162,7 +158,7 @@ class LLMExtractionService:
             else ""
         )
 
-        response = await self.client.chat.completions.create(
+        response = await self.client.chat.completions.parse(
             model="gpt-4o-mini",
             messages=[
                 {
@@ -191,30 +187,24 @@ class LLMExtractionService:
                         "- response_message vacío ('') si offer_accepted=true.\n"
                         "- Si offer_accepted=false, response_message debe pedir sólo el PRÓXIMO campo faltante.\n"
                         "- No repitas info ya recolectada. Sólo pedí un campo a la vez.\n"
-                        "- No incluyas JSON en response_message.\n\n"
-                        "Devolvé SOLO JSON con este formato:\n"
-                        "{\n"
-                        '  "offer_accepted": true/false,\n'
-                        '  "accepted_offer_key": "<clave exacta>" | null,\n'
-                        '  "num_travelers": <entero o null>,\n'
-                        '  "num_underage_travelers": <entero o null>,\n'
-                        '  "departure_location": "<ciudad>" | null,\n'
-                        '  "date": "<mes o fecha>" | null,\n'
-                        '  "response_message": "<mensaje para el cliente, o vacío>"\n'
-                        "}"
+                        "- No incluyas JSON en response_message.\n"
+                        "- num_travelers, num_underage_travelers y departure_location solo pueden venir\n"
+                        "de lo que el USUARIO dijo EXPLÍCITAMENTE en SUS mensajes.\n"
+                        "- NUNCA los inferás de los textos de ofertas que el BOT envió en el historial.\n"
                     ),
                 },
                 *history,
                 {"role": "user", "content": message},
             ],
-            response_format={"type": "json_object"},
+            response_format=ExtractionResult,
             max_tokens=400,
         )
 
-        data = json.loads(response.choices[0].message.content)
+        data = response.choices[0].message.parsed
+        logger.debug("[extract_with_offers] raw LLM response: %s", data)
 
-        offer_accepted = data.get("offer_accepted", False)
-        accepted_offer_key = data.get("accepted_offer_key")
+        offer_accepted = data.offer_accepted
+        accepted_offer_key = data.accepted_offer_key
 
         # Hallucination guard — verify key actually exists in the valid list
         if (
@@ -229,13 +219,8 @@ class LLMExtractionService:
             self._compute_completeness(data, session) if not offer_accepted else False
         )
 
-        return ExtractionResult(
-            num_travelers=data.get("num_travelers"),
-            num_underage_travelers=data.get("num_underage_travelers"),
-            departure_location=data.get("departure_location"),
-            date=data.get("date"),
-            response_message=data.get("response_message", ""),
-            is_complete=is_complete,
-            offer_accepted=offer_accepted,
-            accepted_offer_key=accepted_offer_key,
-        )
+        data.is_complete = is_complete
+        data.offer_accepted = offer_accepted
+        data.accepted_offer_key = accepted_offer_key
+
+        return data
