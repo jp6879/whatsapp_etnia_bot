@@ -451,12 +451,13 @@ class MessageManager:
         self.encoded_ads = load_ads_config()
         self.offers_db = load_offers_db()
 
-    async def get_ad_info(self, message: str) -> tuple[str, str]:
+    async def get_ad_info(self, message: str) -> tuple[str, str, str]:
         """Fast lookup: message -> destination"""
         ad_info = self.encoded_ads.get(message, {})
         ad_destination = ad_info.get("ad_destination", "unknown")
         offer_type = ad_info.get("offer_type", "unknown")
-        return ad_destination, offer_type
+        destination_key = ad_info.get("destination_key", "unknown")
+        return ad_destination, destination_key, offer_type
 
     async def get_iata_code(self, text: str):
         text_norm = self.normalize_text(text)
@@ -543,45 +544,20 @@ class MessageManager:
         else:
             return None, None
 
-    def get_offers_for_destination(self, destination: str) -> list[tuple[str, str]]:
+    def get_offer_for_destination_key(self, destination_key: str) -> dict:
         """
-        Returns all (offer_key, offer_message_text) pairs for a given destination.
-
-        New schema: key = "{destination}_{adults}_{minors}"
-                    value = {"message": "...", "summary_for_bot": "..."}
-
-        Used for deterministic offer sending — no LLM needed.
+        Returns the offer data for a given destination key.
         """
-        dest_lower = destination.lower()
-        return [
-            (key, entry["message"])
-            for key, entry in self.offers_db.items()
-            if key.startswith(dest_lower + "_") and isinstance(entry, dict)
-        ]
+        dest_lower = destination_key.lower()
+        return self.offers_db.get(dest_lower)
 
-    def get_offers_summary_for_destination(self, destination: str) -> str | None:
+    def get_offer_summary_for_destination_key(self, destination_key: str) -> str:
         """
-        Returns a human-readable summary of available packages for a destination.
-
-        Parses keys of messages_db that follow the format:
-            {destination}_{departure_iata}_{num_adults}_{num_minors}
-
-        Returns a list of available departure cities and passenger counts,
-        or None if no matching offers are found.
+        Return a summary for the given offer
         """
-        dest_lower = destination.lower()
-        summaries = [
-            entry["summary_for_bot"]
-            for key, entry in self.offers_db.items()
-            if key.startswith(dest_lower + "_")
-            and isinstance(entry, dict)
-            and entry.get("summary_for_bot")
-        ]
-
-        if not summaries:
-            return None
-
-        return "\n\n".join(summaries)
+        return self.get_offer_for_destination_key(destination_key).get(
+            "summary_for_bot"
+        )
 
     def get_message_offer(self, actual_session: dict) -> str | None:
         """

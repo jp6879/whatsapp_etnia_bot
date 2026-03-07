@@ -38,12 +38,15 @@ class ChatbotService:
     async def _handle_new_session(
         self, redis_session: RedisSession, from_number: str, body: str, name: str
     ):
-        ad_destination, offer_type = await self.message_manager.get_ad_info(body)
+        ad_destination, destination_key, offer_type = (
+            await self.message_manager.get_ad_info(body)
+        )
         logger.debug(
-            "[NEW SESSION] body=%r → destination=%r offer_type=%r",
+            "[NEW SESSION] body=%r → destination=%r offer_type=%r destination_key=%r",
             body[:60],
             ad_destination,
             offer_type,
+            destination_key,
         )
 
         if ad_destination == "unknown":
@@ -61,6 +64,7 @@ class ChatbotService:
             "full_name": name,
             "destination": ad_destination,
             "offer_type": offer_type,
+            "destination_key": destination_key,
             "count_requests": 1,
             "messages_history": [],
             "num_travelers": None,
@@ -90,11 +94,13 @@ class ChatbotService:
         State is set to PRESENTING_OFFERS so the next message goes to extract_with_offers().
         """
         destination = actual_session["destination"]
+        destination_key = actual_session["destination_key"]
         name = actual_session.get("full_name", "Viajero")
         logger.debug(
-            "[STAGE 1→2] Starting offer presentation for destination=%r name=%r",
+            "[STAGE 1→2] Starting offer presentation for destination=%r name=%r destination_key=%r",
             destination,
             name,
+            destination_key,
         )
 
         # ── 1. Greeting ───────────────────────────────────────────────────────
@@ -108,13 +114,11 @@ class ChatbotService:
         )
 
         # ── 2. Send all available offer messages for this destination ─────────
-        offers = self.message_manager.get_offers_for_destination(destination)
-        logger.debug("[STAGE 2] Found %d offer(s) for %r", len(offers), destination)
+        offer_data = self.message_manager.get_offer_for_destination_key(destination_key)
 
         # TODO: Handle no offers case with fully agent to extract information
 
-        for _key, offer_text in offers:
-            await send_whatsapp_text(from_number, offer_text)
+        await send_whatsapp_text(from_number, offer_data["message"])
 
         # ── 3. Closing question ───────────────────────────────────────────────
         closing = (
@@ -206,19 +210,15 @@ class ChatbotService:
         - Detect if the user accepted one of the pre-sent offers
         - OR extract any info they already provided (departure, travelers, date)
         """
-        destination = actual_session.get("destination")
-        valid_offer_keys = [
-            key
-            for key, _ in self.message_manager.get_offers_for_destination(destination)
-        ]
-        offers_summary = self.message_manager.get_offers_summary_for_destination(
-            destination
+        destination_key = actual_session.get("destination_key")
+        offers_summary = self.message_manager.get_offer_summary_for_destination_key(
+            destination_key
         )
 
         result = await self.extractor.extract_with_offers(
             message=body,
             session=actual_session,
-            valid_offer_keys=valid_offer_keys,
+            valid_offer_keys=[destination_key],
             offers_summary=offers_summary,
         )
         logger.debug(
