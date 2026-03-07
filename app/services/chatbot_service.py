@@ -215,6 +215,12 @@ class ChatbotService:
             destination_key
         )
 
+        logger.debug(
+            "[STAGE 2] destination_key=%r offers_summary=%r",
+            destination_key,
+            offers_summary,
+        )
+
         result = await self.extractor.extract_with_offers(
             message=body,
             session=actual_session,
