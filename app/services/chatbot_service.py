@@ -119,6 +119,9 @@ class ChatbotService:
         # TODO: Handle no offers case with fully agent to extract information
 
         await send_whatsapp_text(from_number, offer_data["message"])
+        actual_session["messages_history"].append(
+            {"role": "assistant", "content": offer_data["message"]}
+        )
 
         # ── 3. Closing question ───────────────────────────────────────────────
         closing = (

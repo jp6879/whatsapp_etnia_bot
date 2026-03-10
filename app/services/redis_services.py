@@ -32,7 +32,14 @@ class RedisService:
             num_travelers_message = self.lower_format(
                 actual_dict.get("num_travelers_message", "")
             )
-            num_travelers_detected = f"{actual_dict.get('num_travelers', '')} ADULTOS - {actual_dict.get('num_underage_travelers', '')} NIÑOS"
+            num_adults = actual_dict.get("num_travelers")
+            num_minors = actual_dict.get("num_underage_travelers")
+            num_travelers_detected = (
+                f"{num_adults if num_adults is not None else '-'} ADULTOS"
+                f" - {num_minors if num_minors is not None else '-'} NIÑOS"
+                if num_adults is not None or num_minors is not None
+                else ""
+            )
             full_name = self.lower_format(actual_dict.get("full_name", ""))
 
             departure_location = self.lower_format(
@@ -58,7 +65,11 @@ class RedisService:
                     None, [num_travelers_message, departure_location, departure_month]
                 )
             )
-            data["ESTADO"] = TotalStates[actual_dict.get("state")].lower()
+            raw_state = actual_dict.get("state")
+            try:
+                data["ESTADO"] = TotalStates[raw_state].lower()
+            except KeyError:
+                data["ESTADO"] = raw_state or "desconocido"
             data["RED SOCIAL"] = "WHATSAPP"
             data_list.append(copy.deepcopy(data))
 

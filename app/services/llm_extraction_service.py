@@ -64,15 +64,11 @@ class LLMExtractionService:
         )
         merged_date = data.date if data.date is not None else session.get("date")
 
-        required_fields = session.get("required_fields", [])
-        date_required = (
-            "date" in required_fields or "fecha" in " ".join(required_fields).lower()
-        )
         return (
             merged_travelers is not None
             and merged_underage is not None
             and merged_departure is not None
-            and (not date_required or merged_date is not None)
+            and merged_date is not None
         )
 
     async def extract(self, message: str, session: dict) -> ExtractionResult:

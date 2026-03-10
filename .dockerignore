@@ -3,7 +3,6 @@
 __pycache__
 .pytest_cache
 etc/secrets/
-etc/secrets/
 app/__pycache__
 app/session/__pycache__
 app/utils/__pycache__
