@@ -49,6 +49,7 @@ class GoogleDriveSettings(BaseSettings):
         default=["https://www.googleapis.com/auth/drive.readonly"]
     )
     ADS_FILE_PATH: str
+    OFFERS_DB_PATH: str
     FOLDER_ID: str
     FOLDER_ID_SEASONAL: str
     FOLDER_ID_GRUPAL: str
@@ -66,8 +67,15 @@ class GoogleSheetsSettings(BaseSettings):
     model_config = _base_config
 
 
+class OpenAISettings(BaseSettings):
+    OPENAI_API_KEY: str
+
+    model_config = _base_config
+
+
 redis_settings = RedisSettings()
 worker_redis_settings = WorkerRedisSettings()
 gdrive_settings = GoogleDriveSettings()
 wpp_settings = AppSettings()
 google_sheets_settings = GoogleSheetsSettings()
+openai_settings = OpenAISettings()

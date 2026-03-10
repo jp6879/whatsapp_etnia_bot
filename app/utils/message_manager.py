@@ -28,6 +28,13 @@ def load_ads_config():
         return json.load(f)
 
 
+def load_offers_db():
+    """Load messages db with caching for performance"""
+    config_path = gdrive_settings.OFFERS_DB_PATH
+    with open(config_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
 class MessageManager:
     NUM_WORDS = {
         "uno": 1,
@@ -442,11 +449,15 @@ class MessageManager:
 
     def __init__(self):
         self.encoded_ads = load_ads_config()
+        self.offers_db = load_offers_db()
 
-    async def get_destination_by_message(self, message: str) -> str:
+    async def get_ad_info(self, message: str) -> tuple[str, str, str]:
         """Fast lookup: message -> destination"""
         ad_info = self.encoded_ads.get(message, {})
-        return ad_info.get("ad_destination", "unknown")
+        ad_destination = ad_info.get("ad_destination", "unknown")
+        offer_type = ad_info.get("offer_type", "unknown")
+        destination_key = ad_info.get("destination_key", "unknown")
+        return ad_destination, destination_key, offer_type
 
     async def get_iata_code(self, text: str):
         text_norm = self.normalize_text(text)
@@ -533,23 +544,38 @@ class MessageManager:
         else:
             return None, None
 
-    async def get_message_offer(self, actual_session):
-        destination = actual_session.get("destination")
-        num_travelers = actual_session.get("num_travelers")
-        num_underage_travelers = actual_session.get("num_underage_travelers")
-        departure = actual_session.get("departure_iata_code")
+    def get_offer_for_destination_key(self, destination_key: str) -> dict:
+        """
+        Returns the offer data for a given destination key.
+        """
+        dest_lower = destination_key.lower()
+        return self.offers_db.get(dest_lower)
 
-        with open("/etc/secrets/messages_db.json", "r", encoding="utf-8") as f:
-            messages_db = json.load(f)
-
-        message_to_send = messages_db.get(
-            f"{destination.lower()}_{departure.lower()}_{num_travelers}_{num_underage_travelers}"
+    def get_offer_summary_for_destination_key(self, destination_key: str) -> str:
+        """
+        Return a summary for the given offer
+        """
+        return self.get_offer_for_destination_key(destination_key).get(
+            "summary_for_bot"
         )
 
-        if not message_to_send:
+    def get_message_offer(self, actual_session: dict) -> str | None:
+        """
+        Look up a pre-built offer by destination + passenger count.
+
+        New key format: "{destination}_{adults}_{minors}"  (no IATA departure)
+        """
+        destination = actual_session.get("destination", "")
+        num_travelers = actual_session.get("num_travelers")
+        num_underage_travelers = actual_session.get("num_underage_travelers")
+
+        key = f"{destination.lower()}_{num_travelers}_{num_underage_travelers}"
+        entry = self.offers_db.get(key)
+
+        if not entry or not isinstance(entry, dict):
             return None
 
-        return message_to_send
+        return entry.get("message")
 
     async def get_seassonal_offer_link(self, actual_session):
         service = build_drive_service()
