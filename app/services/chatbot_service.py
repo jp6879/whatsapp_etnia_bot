@@ -1,25 +1,49 @@
 from datetime import datetime, timedelta
+import asyncio
 import logging
 import pytz
 from app.services.session_service import RedisSession
 from app.core.enums import SessionState
 from app.utils.message_manager import MessageManager
 from app.utils.whatsapp import send_whatsapp_text
-from app.state_machines.factory import StateMachineFactory
 from app.tasks import sync_sheets_with_redis_task
 from app.services.pre_clasifyer_service import PreClasifyerService
 from app.services.llm_extraction_service import LLMExtractionService
+from app.config import wpp_settings
 
 logger = logging.getLogger("chatbot")
 
+# Lazy import — only loaded when USE_LANGCHAIN_AGENT=true
+_EtniaAgent = None
+
+
+def _get_agent_class():
+    """Import EtniaAgent lazily so langchain is only required when the flag is on."""
+    global _EtniaAgent
+    if _EtniaAgent is None:
+        from app.services.agent.etnia_agent import EtniaAgent  # noqa: PLC0415
+
+        _EtniaAgent = EtniaAgent
+    return _EtniaAgent
+
 
 class ChatbotService:
-    def __init__(self, message_manager: MessageManager, factory: StateMachineFactory):
+    def __init__(self, message_manager: MessageManager):
         self.message_manager = message_manager
-        self.factory = factory
         self.argentina_tz = pytz.timezone("America/Argentina/Buenos_Aires")
         self.guard = PreClasifyerService()
         self.extractor = LLMExtractionService()
+
+        # Phase 2: EtniaAgent — only instantiated when the feature flag is on
+        self._agent = None
+        if wpp_settings.USE_LANGCHAIN_AGENT:
+            AgentClass = _get_agent_class()
+            self._agent = AgentClass(message_manager)
+            logger.info("[ChatbotService] EtniaAgent enabled and initialized.")
+        else:
+            logger.debug(
+                "[ChatbotService] EtniaAgent disabled (USE_LANGCHAIN_AGENT=false)."
+            )
 
     async def process_message(
         self, redis_session: RedisSession, from_number: str, body: str, name: str
@@ -108,34 +132,37 @@ class ChatbotService:
             f"¡Hola!👋🏻 Somos Etnia Viajes ✨\n"
             f"Nos escribiste por un viaje a {destination.title()}."
         )
-        await send_whatsapp_text(from_number, intro)
-        actual_session["messages_history"].append(
-            {"role": "assistant", "content": intro}
-        )
 
         # ── 2. Send all available offer messages for this destination ─────────
         offer_data = self.message_manager.get_offer_for_destination_key(destination_key)
 
         # TODO: Handle no offers case with fully agent to extract information
 
-        await send_whatsapp_text(from_number, offer_data["message"])
-        actual_session["messages_history"].append(
-            {"role": "assistant", "content": offer_data["message"]}
-        )
-
         # ── 3. Closing question ───────────────────────────────────────────────
         closing = (
             "¿Que te parecen estas opciones? "
             "Si preferís, también podemos armarte algo a medida 😊"
         )
-        await send_whatsapp_text(from_number, closing)
-        actual_session["messages_history"].append(
-            {"role": "assistant", "content": closing}
+
+        # Send all three messages concurrently — httpx is async so this is safe.
+        await asyncio.gather(
+            send_whatsapp_text(from_number, intro),
+            send_whatsapp_text(from_number, offer_data["message"]),
+            send_whatsapp_text(from_number, closing),
+        )
+
+        # Append all messages to history in order
+        actual_session["messages_history"].extend(
+            [
+                {"role": "assistant", "content": intro},
+                {"role": "assistant", "content": offer_data["message"]},
+                {"role": "assistant", "content": closing},
+            ]
         )
 
         actual_session["state"] = SessionState.PRESENTING_OFFERS
         await redis_session.save_session(actual_session)
-        sync_sheets_with_redis_task.delay()
+        sync_sheets_with_redis_task.delay(from_number)
         return {"status": "ok"}
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -187,7 +214,14 @@ class ChatbotService:
         actual_session["messages_history"].append({"role": "user", "content": body})
 
         logger.debug("[ROUTER] state=%r → routing...", state)
-        # ── Route to the correct stage ────────────────────────────────────────
+
+        # ── Phase 2: Route through EtniaAgent if feature flag is on ───────────────
+        if self._agent is not None:
+            return await self._handle_with_agent(
+                actual_session, redis_session, from_number, body
+            )
+
+        # ── Legacy stage router (unchanged) ──────────────────────────────────
         if state == SessionState.PRESENTING_OFFERS:
             return await self._handle_offer_reply(
                 actual_session, redis_session, from_number, body
@@ -196,6 +230,63 @@ class ChatbotService:
             return await self._handle_extraction(
                 actual_session, redis_session, from_number, body
             )
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # AGENT PATH (Phase 2) — EtniaAgent handles the conversation
+    # ─────────────────────────────────────────────────────────────────────────
+
+    async def _handle_with_agent(
+        self,
+        actual_session: dict,
+        redis_session: RedisSession,
+        from_number: str,
+        body: str,
+    ):
+        """
+        Route the current turn through EtniaAgent when USE_LANGCHAIN_AGENT=true.
+        The agent returns an AgentResult with:
+          - messages_to_send: list of strings to deliver to WhatsApp in order
+          - new_state: target SessionState
+          - session_updates: dict of fields to merge into the session
+        """
+        logger.debug(
+            "[AGENT PATH] Invoking EtniaAgent for state=%r", actual_session.get("state")
+        )
+
+        agent_result = await self._agent.run(session=actual_session, message=body)
+
+        logger.debug(
+            "[AGENT PATH] new_state=%r messages=%d updates=%r",
+            agent_result.new_state,
+            len(agent_result.messages_to_send),
+            list(agent_result.session_updates.keys()),
+        )
+
+        # Merge any extracted/updated fields into the session
+        for key, value in agent_result.session_updates.items():
+            actual_session[key] = value
+
+        # If departure_location was updated, resolve IATA code
+        if "departure_location" in agent_result.session_updates:
+            actual_session["departure_iata_code"] = (
+                await self.message_manager.get_iata_code(
+                    agent_result.session_updates["departure_location"]
+                )
+            )
+
+        # Update state
+        actual_session["state"] = agent_result.new_state
+
+        # Send messages sequentially (WhatsApp ordering is UX-critical)
+        for msg_text in agent_result.messages_to_send:
+            await send_whatsapp_text(from_number, msg_text)
+            actual_session["messages_history"].append(
+                {"role": "assistant", "content": msg_text}
+            )
+
+        await redis_session.save_session(actual_session)
+        sync_sheets_with_redis_task.delay(from_number)
+        return {"status": "ok"}
 
     # ─────────────────────────────────────────────────────────────────────────
     # STAGE 2 — Handle user reply to offers (single LLM call)
@@ -283,7 +374,7 @@ class ChatbotService:
                 await send_whatsapp_text(from_number, result.response_message)
                 actual_session["state"] = SessionState.EXTRACTING_INFORMATION
 
-        sync_sheets_with_redis_task.delay()
+        sync_sheets_with_redis_task.delay(from_number)
         await redis_session.save_session(actual_session)
         return {"status": "ok"}
 
@@ -331,6 +422,6 @@ class ChatbotService:
         else:
             await send_whatsapp_text(from_number, extraction.response_message)
 
-        sync_sheets_with_redis_task.delay()
+        sync_sheets_with_redis_task.delay(from_number)
         await redis_session.save_session(actual_session)
         return {"status": "ok"}

@@ -17,7 +17,6 @@ from pydantic import BaseModel
 from app.api.dependencies import (
     get_chatbot_service,
     get_message_manager,
-    get_sm_factory,
 )
 from app.services.session_service import RedisSession
 
@@ -69,8 +68,7 @@ async def test_chat(body: ChatRequest):
     """
     # ── Build dependencies manually ─────────────────────────────────────────
     message_manager = get_message_manager()
-    factory = get_sm_factory(message_manager)
-    chatbot_service = get_chatbot_service(message_manager, factory)
+    chatbot_service = get_chatbot_service(message_manager)
     redis_session = RedisSession(from_number=body.from_number)
 
     # ── Capture bot messages ─────────────────────────────────────────────────

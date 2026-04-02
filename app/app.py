@@ -2,13 +2,16 @@ import logging
 from fastapi import FastAPI
 from app.api.routers import webhook_router
 from app.api.routers import test_router
+from app.config import wpp_settings
 
-# ── Dev logging: show DEBUG output from our services in the terminal ──────────
+# ── Logging: level is controlled via LOG_LEVEL in .env ───────────────────────
+# Development default: DEBUG — set LOG_LEVEL=WARNING in production .env
+_log_level = getattr(logging, wpp_settings.LOG_LEVEL.upper(), logging.DEBUG)
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=_log_level,
     format="%(levelname)-8s [%(name)s] %(message)s",
 )
-# Silence noisy third-party loggers
+# Silence noisy third-party loggers regardless of our LOG_LEVEL
 for _noisy in ("httpcore", "httpx", "openai", "watchfiles", "asyncio"):
     logging.getLogger(_noisy).setLevel(logging.WARNING)
 

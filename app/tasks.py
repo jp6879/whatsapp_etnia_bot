@@ -1,3 +1,4 @@
+import logging
 from pandas import DataFrame
 from asgiref.sync import async_to_sync
 from redis import Redis
@@ -9,9 +10,11 @@ from app.services.sheets_services import SheetsService
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
+logger = logging.getLogger("tasks")
+
 
 def get_redis_service_sync() -> RedisService:
-    """Create Redis service for Celery (using async client with async_to_sync)."""
+    """Create Redis service for Celery (using sync client — Celery workers are sync)."""
     client = Redis(
         host=redis_settings.REDIS_HOST,
         port=redis_settings.REDIS_PORT,
@@ -32,24 +35,56 @@ def get_sheets_service_sync() -> SheetsService:
     return SheetsService(service=service)
 
 
-@celery.task
-def sync_sheets_with_redis_task():
+@celery.task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=30,  # seconds between retries
+    name="app.tasks.sync_sheets_with_redis_task",
+)
+def sync_sheets_with_redis_task(self, phone_number: str | None = None):
     """
     Background task to sync Redis session data to Google Sheets.
-    Called when a conversation reaches a handoff state.
+
+    When `phone_number` is provided (the normal case), performs a targeted
+    single-row upsert — O(1) Redis read instead of O(n) full scan.
+
+    Falls back to a full dump when called without a phone number (e.g. admin/cron trigger).
     """
     redis_service = get_redis_service_sync()
     sheets_service = get_sheets_service_sync()
 
     try:
-        data = redis_service.get_all_data()
-        df = (
-            DataFrame(data)
-            .sort_values(by="FECHA", ascending=True)
-            .reset_index(drop=True)
+        if phone_number:
+            # ── Fast path: single-session upsert ────────────────────────────
+            logger.info("[sheets_sync] Upserting single session for %s", phone_number)
+            row = redis_service.get_session_row(phone_number)
+            if not row:
+                logger.warning(
+                    "[sheets_sync] No session found for %s — skipping", phone_number
+                )
+                return {"message": "No session found", "phone": phone_number}
+            data = DataFrame([row])
+        else:
+            # ── Slow path: full dump (admin / cron use only) ─────────────────
+            logger.info("[sheets_sync] Full dump triggered (no phone_number)")
+            data = DataFrame(redis_service.get_all_data())
+
+        if data.empty:
+            return {"message": "No data to sync"}
+
+        data = data.sort_values(by="FECHA", ascending=True).reset_index(drop=True)
+        async_to_sync(sheets_service.update_sheet)(data)
+        logger.info("[sheets_sync] Sheets updated successfully (rows=%d)", len(data))
+        return {"message": "Sheets updated successfully", "rows": len(data)}
+
+    except Exception as exc:
+        logger.error(
+            "[sheets_sync] Task failed (attempt %d/3): %s",
+            self.request.retries + 1,
+            exc,
         )
-        async_to_sync(sheets_service.update_sheet)(df)
-        return {"message": "Sheets updated successfully"}
+        raise self.retry(exc=exc)
+
     finally:
         # CRITICAL: Close Redis connection to prevent "max clients" error
         redis_service.client.close()

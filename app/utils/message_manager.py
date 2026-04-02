@@ -1,24 +1,9 @@
 import re
-import token
-from dataclasses import dataclass
-import json
-import io
-import base64
-import requests
-from googleapiclient.http import MediaIoBaseDownload
-
-from pyparsing import Optional
-from app.utils.list_drive import build_drive_service, list_files_in_folder
-import spacy
-from difflib import get_close_matches
-import os
-from dotenv import load_dotenv, find_dotenv
-from app.config import gdrive_settings
-
-
 import json
 from functools import lru_cache
 from pathlib import Path
+from difflib import get_close_matches
+from app.config import gdrive_settings
 
 
 def load_ads_config():
@@ -36,31 +21,10 @@ def load_offers_db():
 
 
 class MessageManager:
-    NUM_WORDS = {
-        "uno": 1,
-        "un": 1,
-        "una": 1,
-        "dos": 2,
-        "tres": 3,
-        "cuatro": 4,
-        "cinco": 5,
-        "seis": 6,
-        "siete": 7,
-        "ocho": 8,
-        "nueve": 9,
-        "diez": 10,
-        "once": 11,
-        "doce": 12,
-        "trece": 13,
-        "catorce": 14,
-        "quince": 15,
-        "dieciséis": 16,
-        "dieciseis": 16,
-        "diecisiete": 17,
-        "dieciocho": 18,
-        "diecinueve": 19,
-        "veinte": 20,
-    }
+    def __init__(self):
+        self.encoded_ads = load_ads_config()
+        self.offers_db = load_offers_db()
+
     CITIES = {
         "AEP": [
             "aep",
@@ -460,7 +424,38 @@ class MessageManager:
         return ad_destination, destination_key, offer_type
 
     async def get_iata_code(self, text: str):
-        text_norm = self.normalize_text(text)
+        text_norm = re.sub(r"[^a-záéíóúñ0-9 ]", " ", text.lower())
+
+        # 1. Direct match
+        for code, variants in self.CITIES.items():
+            for variant in variants:
+                if variant in text_norm:
+                    return code
+
+        # 2. Fuzzy match
+        words = text_norm.split()
+        for word in words:
+            for code, variants in self.CITIES.items():
+                best_match = get_close_matches(word, variants, n=1, cutoff=0.8)
+                if best_match:
+                    return code
+
+        return None
+
+    def get_offer_for_destination_key(self, destination_key: str) -> dict:
+        """
+        Returns the offer data for a given destination key.
+        """
+        dest_lower = destination_key.lower()
+        return self.offers_db.get(dest_lower)
+
+    def get_offer_summary_for_destination_key(self, destination_key: str) -> str:
+        """
+        Return the summary_for_bot string for a given destination key.
+        """
+        return self.get_offer_for_destination_key(destination_key).get(
+            "summary_for_bot"
+        )
 
         # 1. Coincidencia directa
         for code, variants in self.CITIES.items():

@@ -12,6 +12,16 @@ _base_config = SettingsConfigDict(
 class AppSettings(BaseSettings):
     WPP_ADAPTER_URL: str
     AUTH_SESSION_KEY: str
+    ENV: str = "development"  # "development" | "staging" | "production"
+    LOG_LEVEL: str = "DEBUG"  # Override to WARNING or ERROR in prod
+
+    # ── Phase 2: LangChain agent feature flag ─────────────────────────────
+    USE_LANGCHAIN_AGENT: bool = False  # Enable new agent path (off by default)
+
+    # ── LangSmith tracing (optional) ─────────────────────────────────────
+    LANGCHAIN_TRACING_V2: bool = False
+    LANGCHAIN_API_KEY: str = ""
+    LANGCHAIN_PROJECT: str = "etnia-viajes"
 
     model_config = _base_config
 
