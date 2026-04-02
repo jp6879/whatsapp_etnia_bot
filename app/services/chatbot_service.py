@@ -66,7 +66,7 @@ class ChatbotService:
             "offer_type": offer_type,
             "destination_key": destination_key,
             "count_requests": 1,
-            "messages_history": [],
+            "messages_history": [{"role": "user", "content": body}],
             "num_travelers": None,
             "num_underage_travelers": None,
             "departure_location": None,
@@ -116,21 +116,21 @@ class ChatbotService:
         # ── 2. Send all available offer messages for this destination ─────────
         offer_data = self.message_manager.get_offer_for_destination_key(destination_key)
 
-        # TODO: Handle no offers case with fully agent to extract information
-
         await send_whatsapp_text(from_number, offer_data["message"])
 
         # ── 3. Closing question ───────────────────────────────────────────────
-        closing = (
-            "¿Que te parecen estas opciones? "
-            "Si preferís, también podemos armarte algo a medida 😊"
-        )
+        closing = "Decime qué mes te interesa y para cuántas personas, y lo vemos más a medida 😊✈️"
         await send_whatsapp_text(from_number, closing)
+
+        actual_session["messages_history"].append(
+            {"role": "assistant", "content": offer_data["message"]}
+        )
         actual_session["messages_history"].append(
             {"role": "assistant", "content": closing}
         )
 
         actual_session["state"] = SessionState.PRESENTING_OFFERS
+
         await redis_session.save_session(actual_session)
         sync_sheets_with_redis_task.delay()
         return {"status": "ok"}
@@ -211,26 +211,14 @@ class ChatbotService:
         - OR extract any info they already provided (departure, travelers, date)
         """
         destination_key = actual_session.get("destination_key")
-        offers_summary = self.message_manager.get_offer_summary_for_destination_key(
-            destination_key
-        )
-
-        logger.debug(
-            "[STAGE 2] destination_key=%r offers_summary=%r",
-            destination_key,
-            offers_summary,
-        )
 
         result = await self.extractor.extract_with_offers(
             message=body,
             session=actual_session,
-            valid_offer_keys=[destination_key],
-            offers_summary=offers_summary,
         )
         logger.debug(
             "[STAGE 2 LLM] offer_accepted=%r accepted_key=%r is_complete=%r travelers=%r departure=%r date=%r",
             result.offer_accepted,
-            result.accepted_offer_key,
             result.is_complete,
             result.num_travelers,
             result.departure_location,
@@ -241,7 +229,7 @@ class ChatbotService:
             {"role": "assistant", "content": result.response_message}
         )
 
-        if result.offer_accepted and result.accepted_offer_key:
+        if result.offer_accepted:
             # ── User accepted a pre-built offer ──────────────────────────────
             # The offer text was already sent and is in the history — no need to resend.
             # Just confirm and hand off.

@@ -23,7 +23,6 @@ class ExtractionResult(BaseModel):
     )  # True when all required fields have been collected
     # Populated only by extract_with_offers()
     offer_accepted: bool = Field(default=False)
-    accepted_offer_key: str | None = Field(default=None)  # e.g. "turquia_2_0"
 
 
 class LLMExtractionService:
@@ -128,8 +127,6 @@ class LLMExtractionService:
         self,
         message: str,
         session: dict,
-        valid_offer_keys: list[str],
-        offers_summary: str | None = None,
     ) -> ExtractionResult:
         """
         Stage 2 combined agent — offer acceptance detection + info extraction.
@@ -149,14 +146,6 @@ class LLMExtractionService:
         destination = session.get("destination", "el destino seleccionado")
         known_str = self._build_known_str(session)
         history = self.build_messages_history(session)
-        keys_str = ", ".join(valid_offer_keys) if valid_offer_keys else "ninguna"
-
-        # Inject the structured summary if provided (more reliable than history-only)
-        summary_block = (
-            f"RESUMEN DE OPCIONES DISPONIBLES:\n{offers_summary}\n\n"
-            if offers_summary
-            else ""
-        )
 
         response = await self.client.chat.completions.parse(
             model="gpt-4o-mini",
@@ -168,11 +157,8 @@ class LLMExtractionService:
                         f"El cliente está interesado en viajar a {destination}.\n\n"
                         "CONTEXTO: El bot ya mostró al cliente los paquetes disponibles "
                         "(los podés ver en el historial de conversación).\n\n"
-                        f"{summary_block}"
                         "INFORMACIÓN YA RECOLECTADA DEL CLIENTE:\n"
                         f"{known_str}\n\n"
-                        f"CLAVES VÁLIDAS DE OFERTA: {keys_str}\n"
-                        "(formato: destino_adultos_menores — la salida está incluida en el texto de la oferta)\n\n"
                         "TU TAREA — decidir UNA de estas dos opciones:\n\n"
                         "OPCIÓN A — El cliente acepta un paquete:\n"
                         "  Señales: dice 'sí', 'me interesa', 'perfecto', 'ese', confirma la oferta\n"
@@ -204,16 +190,6 @@ class LLMExtractionService:
         logger.debug("[extract_with_offers] raw LLM response: %s", data)
 
         offer_accepted = data.offer_accepted
-        accepted_offer_key = data.accepted_offer_key
-
-        # Hallucination guard — verify key actually exists in the valid list
-        if (
-            offer_accepted
-            and accepted_offer_key
-            and accepted_offer_key not in valid_offer_keys
-        ):
-            offer_accepted = False
-            accepted_offer_key = None
 
         is_complete = (
             self._compute_completeness(data, session) if not offer_accepted else False
@@ -221,6 +197,5 @@ class LLMExtractionService:
 
         data.is_complete = is_complete
         data.offer_accepted = offer_accepted
-        data.accepted_offer_key = accepted_offer_key
 
         return data

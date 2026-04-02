@@ -21,7 +21,7 @@ from functools import lru_cache
 from pathlib import Path
 
 
-def load_ads_config():
+def load_ads_config() -> list[dict]:
     """Load ads config with caching for performance"""
     config_path = gdrive_settings.ADS_FILE_PATH
     with open(config_path, "r", encoding="utf-8") as f:
@@ -448,16 +448,19 @@ class MessageManager:
     }
 
     def __init__(self):
-        self.encoded_ads = load_ads_config()
+        self.encoded_ads: list[dict] = load_ads_config()
         self.offers_db = load_offers_db()
 
     async def get_ad_info(self, message: str) -> tuple[str, str, str]:
         """Fast lookup: message -> destination"""
-        ad_info = self.encoded_ads.get(message, {})
-        ad_destination = ad_info.get("ad_destination", "unknown")
-        offer_type = ad_info.get("offer_type", "unknown")
-        destination_key = ad_info.get("destination_key", "unknown")
-        return ad_destination, destination_key, offer_type
+
+        for add_info in self.encoded_ads:
+            message_list = add_info.get("messages", [])
+            if message in message_list:
+                ad_destination = add_info.get("ad_destination", "unknown")
+                destination_key = add_info.get("destination_key", "")
+                offer_type = add_info.get("offer_type", "")
+                return ad_destination, destination_key, offer_type
 
     async def get_iata_code(self, text: str):
         text_norm = self.normalize_text(text)
