@@ -1,10 +1,12 @@
-from collections import defaultdict
 from pydantic import Field
-import json
 import logging
-from dataclasses import dataclass
 from openai import AsyncOpenAI
 from app.config import openai_settings
+from app.services.agents.system_prompts import (
+    COMBINED_EXTRACTION_SYSTEM_INTRO,
+    COMBINED_EXTRACTION_SYSTEM_RULES,
+    EXTRACTION_SYSTEM_RULES,
+)
 from pydantic import BaseModel
 
 logger = logging.getLogger("extractor")
@@ -26,6 +28,8 @@ class ExtractionResult(BaseModel):
 
 
 class LLMExtractionService:
+    MAX_HISTORY_MESSAGES = 30
+
     def __init__(self):
         self.client = AsyncOpenAI(api_key=openai_settings.OPENAI_API_KEY)
 
@@ -63,9 +67,10 @@ class LLMExtractionService:
         )
         merged_date = data.date if data.date is not None else session.get("date")
 
-        required_fields = session.get("required_fields", [])
+        required_fields = session.get("required_fields", ["date"])
         date_required = (
-            "date" in required_fields or "fecha" in " ".join(required_fields).lower()
+            "date" in required_fields
+            or "fecha" in " ".join(map(str, required_fields)).lower()
         )
         return (
             merged_travelers is not None
@@ -74,6 +79,22 @@ class LLMExtractionService:
             and (not date_required or merged_date is not None)
         )
 
+    def _append_history_turn(
+        self,
+        session: dict,
+        user_message: str,
+        assistant_message: str,
+    ) -> None:
+        history = session.setdefault("messages_history", [])
+        history.append({"role": "user", "content": user_message})
+        if assistant_message:
+            history.append({"role": "assistant", "content": assistant_message})
+
+    def _trim_history(self, session: dict) -> None:
+        history = session.get("messages_history", [])
+        if len(history) > self.MAX_HISTORY_MESSAGES:
+            session["messages_history"] = history[-self.MAX_HISTORY_MESSAGES :]
+
     async def extract(self, message: str, session: dict) -> ExtractionResult:
         """
         Stage 3 extraction agent — custom quote flow only.
@@ -81,49 +102,50 @@ class LLMExtractionService:
         Called only after the user has rejected the pre-built offers.
         Extracts: num_travelers, num_underage_travelers, departure_location, date.
         """
-        destination = session.get("destination", "el destino seleccionado")
         known_str = self._build_known_str(session)
         history = self.build_messages_history(session)
 
-        response = await self.client.chat.completions.parse(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        f"Sos el asistente virtual de Etnia Viajes. "
-                        f"El cliente quiere viajar a {destination}.\n\n"
-                        "INFORMACIÓN YA RECOLECTADA:\n"
-                        f"{known_str}\n\n"
-                        "Tu tarea: extraer del mensaje del cliente la información que falte "
-                        "y responder en español de forma amigable y natural.\n\n"
-                        "CAMPOS A COMPLETAR (en orden de prioridad):\n"
-                        "1. num_travelers — cantidad de adultos (requerido)\n"
-                        "2. num_underage_travelers — menores de edad; si no se menciona, asumí 0 (requerido)\n"
-                        "3. departure_location — ciudad argentina desde donde salen (requerido)\n"
-                        "4. date — fecha del viaje, puede ser especifica o un mes únicamente (requerido)\n"
-                        "Notas importantes:\n"
-                        "- No repitas información ya recolectada en tu pregunta.\n"
-                        "- Sólo pedí un campo a la vez.\n"
-                        "- response_message SIEMPRE debe estar presente y en español.\n"
-                        "- No incluyas JSON ni formato técnico en response_message."
-                    ),
-                },
-                *history,
-                {"role": "user", "content": message},
-            ],
-            response_format=ExtractionResult,
-            max_tokens=350,
-        )
+        system_rules = EXTRACTION_SYSTEM_RULES.format(known_str=known_str)
 
-        data = response.choices[0].message.parsed
+        messages = [
+            *history,
+            {"role": "system", "content": system_rules},
+            {"role": "user", "content": message},
+        ]
+
+        try:
+            response = await self.client.chat.completions.parse(
+                model="gpt-4o-mini",
+                messages=messages,
+                response_format=ExtractionResult,
+                max_tokens=350,
+            )
+            data = response.choices[0].message.parsed
+            if data is None:
+                raise ValueError("LLM returned no parsed payload")
+        except Exception as exc:
+            logger.exception("[extract] LLM parse failed: %s", exc)
+            fallback = ExtractionResult(
+                response_message=(
+                    "Perdón, no llegué a entender bien. ¿Me podés confirmar cuántos "
+                    "adultos viajan, si hay menores, desde qué ciudad salen y en qué fecha?"
+                ),
+                is_complete=False,
+            )
+            self._append_history_turn(session, message, fallback.response_message)
+            self._trim_history(session)
+            return fallback
+
         logger.debug("[extract] raw LLM response: %s", data)
         is_complete = self._compute_completeness(data, session)
         data.is_complete = is_complete
 
+        self._append_history_turn(session, message, data.response_message)
+        self._trim_history(session)
+
         return data
 
-    async def extract_with_offers(
+    async def combined_extraction_answer(
         self,
         message: str,
         session: dict,
@@ -144,56 +166,48 @@ class LLMExtractionService:
             offers_summary: Optional summary_for_bot text, injected explicitly into the prompt.
         """
         destination = session.get("destination", "el destino seleccionado")
-        known_str = self._build_known_str(session)
         history = self.build_messages_history(session)
+        system_intro = COMBINED_EXTRACTION_SYSTEM_INTRO.format(destination=destination)
+        system_rules = COMBINED_EXTRACTION_SYSTEM_RULES
 
-        response = await self.client.chat.completions.parse(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        f"Sos el asistente virtual de Etnia Viajes. "
-                        f"El cliente está interesado en viajar a {destination}.\n\n"
-                        "CONTEXTO: El bot ya mostró al cliente los paquetes disponibles "
-                        "(los podés ver en el historial de conversación).\n\n"
-                        "INFORMACIÓN YA RECOLECTADA DEL CLIENTE:\n"
-                        f"{known_str}\n\n"
-                        "TU TAREA — decidir UNA de estas dos opciones:\n\n"
-                        "OPCIÓN A — El cliente acepta un paquete:\n"
-                        "  Señales: dice 'sí', 'me interesa', 'perfecto', 'ese', confirma la oferta\n"
-                        "  → offer_accepted: true, accepted_offer_key: clave exacta de la lista\n\n"
-                        "OPCIÓN B — El cliente quiere algo diferente o da información:\n"
-                        "  Señales: menciona ciudad diferente, cantidad distinta, pide algo personalizado\n"
-                        "  o simplemente da datos (ej: 'somos 3 adultos', 'salimos desde Córdoba')\n"
-                        "  → offer_accepted: false, extraer lo que se pueda del mensaje\n\n"
-                        "REGLAS:\n"
-                        "- offer_accepted: true SOLO si el cliente confirma querer una oferta específica.\n"
-                        "- Si hay duda, elegí OPCIÓN B y extraé la info.\n"
-                        "- response_message vacío ('') si offer_accepted=true.\n"
-                        "- Si offer_accepted=false, response_message debe pedir sólo el PRÓXIMO campo faltante.\n"
-                        "- No repitas info ya recolectada. Sólo pedí un campo a la vez.\n"
-                        "- No incluyas JSON en response_message.\n"
-                        "- num_travelers, num_underage_travelers y departure_location solo pueden venir\n"
-                        "de lo que el USUARIO dijo EXPLÍCITAMENTE en SUS mensajes.\n"
-                        "- NUNCA los inferás de los textos de ofertas que el BOT envió en el historial.\n"
-                    ),
-                },
-                *history,
-                {"role": "user", "content": message},
-            ],
-            response_format=ExtractionResult,
-            max_tokens=400,
-        )
+        messages = [
+            {"role": "system", "content": system_intro},
+            *history,
+            {"role": "system", "content": system_rules},
+            {"role": "user", "content": message},
+        ]
 
-        data = response.choices[0].message.parsed
+        try:
+            response = await self.client.chat.completions.parse(
+                model="gpt-4o-mini",
+                messages=messages,
+                response_format=ExtractionResult,
+                max_tokens=400,
+            )
+            data = response.choices[0].message.parsed
+            if data is None:
+                raise ValueError("LLM returned no parsed payload")
+        except Exception as exc:
+            logger.exception("[extract_with_offers] LLM parse failed: %s", exc)
+            fallback = ExtractionResult(
+                response_message=(
+                    "¡Gracias! Para ayudarte mejor, ¿me confirmás desde qué ciudad salen "
+                    "y para cuántas personas es el viaje?"
+                ),
+                offer_accepted=False,
+                is_complete=False,
+            )
+            self._append_history_turn(session, message, fallback.response_message)
+            self._trim_history(session)
+            return fallback
+
         logger.debug("[extract_with_offers] raw LLM response: %s", data)
 
-        offer_accepted = data.offer_accepted
+        self._append_history_turn(session, message, data.response_message)
+        self._trim_history(session)
 
-        is_complete = (
-            self._compute_completeness(data, session) if not offer_accepted else False
-        )
+        offer_accepted = data.offer_accepted
+        is_complete = self._compute_completeness(data, session)
 
         data.is_complete = is_complete
         data.offer_accepted = offer_accepted

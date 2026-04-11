@@ -5,7 +5,6 @@ from app.services.session_service import RedisSession
 from app.core.enums import SessionState
 from app.utils.message_manager import MessageManager
 from app.utils.whatsapp import send_whatsapp_text
-from app.state_machines.factory import StateMachineFactory
 from app.tasks import sync_sheets_with_redis_task
 from app.services.pre_clasifyer_service import PreClasifyerService
 from app.services.llm_extraction_service import LLMExtractionService
@@ -14,12 +13,11 @@ logger = logging.getLogger("chatbot")
 
 
 class ChatbotService:
-    def __init__(self, message_manager: MessageManager, factory: StateMachineFactory):
+    def __init__(self, message_manager: MessageManager):
         self.message_manager = message_manager
-        self.factory = factory
         self.argentina_tz = pytz.timezone("America/Argentina/Buenos_Aires")
         self.guard = PreClasifyerService()
-        self.extractor = LLMExtractionService()
+        self.llm_extractor = LLMExtractionService()
 
     async def process_message(
         self, redis_session: RedisSession, from_number: str, body: str, name: str
@@ -31,15 +29,11 @@ class ChatbotService:
 
         return await self._handle_existing_session(redis_session, from_number, body)
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # New session — detect destination then send offers deterministically
-    # ─────────────────────────────────────────────────────────────────────────
-
     async def _handle_new_session(
         self, redis_session: RedisSession, from_number: str, body: str, name: str
     ):
-        ad_destination, destination_key, offer_type = (
-            await self.message_manager.get_ad_info(body)
+        ad_destination, destination_key, offer_type = self.message_manager.get_ad_info(
+            body
         )
         logger.debug(
             "[NEW SESSION] body=%r → destination=%r offer_type=%r destination_key=%r",
@@ -181,12 +175,10 @@ class ChatbotService:
 
             return {"status": "406", "detail": "The message is not acceptable"}
 
-        actual_session["messages_history"].append({"role": "user", "content": body})
-
         logger.debug("[ROUTER] state=%r → routing...", state)
         # ── Route to the correct stage ────────────────────────────────────────
         if state == SessionState.PRESENTING_OFFERS:
-            return await self._handle_offer_reply(
+            return await self._present_offers(
                 actual_session, redis_session, from_number, body
             )
         elif state == SessionState.EXTRACTING_INFORMATION:
@@ -198,7 +190,7 @@ class ChatbotService:
     # STAGE 2 — Handle user reply to offers (single LLM call)
     # ─────────────────────────────────────────────────────────────────────────
 
-    async def _handle_offer_reply(
+    async def _present_offers(
         self,
         actual_session: dict,
         redis_session: RedisSession,
@@ -210,23 +202,18 @@ class ChatbotService:
         - Detect if the user accepted one of the pre-sent offers
         - OR extract any info they already provided (departure, travelers, date)
         """
-        destination_key = actual_session.get("destination_key")
 
-        result = await self.extractor.extract_with_offers(
+        result = await self.llm_extractor.combined_extraction_answer(
             message=body,
             session=actual_session,
         )
         logger.debug(
-            "[STAGE 2 LLM] offer_accepted=%r accepted_key=%r is_complete=%r travelers=%r departure=%r date=%r",
+            "[STAGE 2 LLM] offer_accepted=%r is_complete=%r travelers=%r departure=%r date=%r",
             result.offer_accepted,
             result.is_complete,
             result.num_travelers,
             result.departure_location,
             result.date,
-        )
-
-        actual_session["messages_history"].append(
-            {"role": "assistant", "content": result.response_message}
         )
 
         if result.offer_accepted:
@@ -239,7 +226,6 @@ class ChatbotService:
                 {"role": "assistant", "content": confirm_msg}
             )
             actual_session["state"] = SessionState.HANDOFF_WITH_OFFER
-            actual_session["accepted_offer_key"] = result.accepted_offer_key
 
         else:
             # ── User wants custom quote — merge any extracted info ────────────
@@ -252,7 +238,7 @@ class ChatbotService:
             if result.departure_location is not None:
                 actual_session["departure_location"] = result.departure_location
                 actual_session["departure_iata_code"] = (
-                    await self.message_manager.get_iata_code(result.departure_location)
+                    self.message_manager.get_iata_code(result.departure_location)
                 )
 
             if result.is_complete:
@@ -284,7 +270,7 @@ class ChatbotService:
         body: str,
     ):
         """Continue extracting missing fields for a custom quote."""
-        extraction = await self.extractor.extract(body, actual_session)
+        extraction = await self.llm_extractor.extract(body, actual_session)
         logger.debug(
             "[STAGE 3 LLM] is_complete=%r travelers=%r underage=%r departure=%r date=%r",
             extraction.is_complete,
@@ -302,8 +288,8 @@ class ChatbotService:
             actual_session["date"] = extraction.date
         if extraction.departure_location is not None:
             actual_session["departure_location"] = extraction.departure_location
-            actual_session["departure_iata_code"] = (
-                await self.message_manager.get_iata_code(extraction.departure_location)
+            actual_session["departure_iata_code"] = self.message_manager.get_iata_code(
+                extraction.departure_location
             )
 
         if extraction.is_complete and actual_session.get("departure_iata_code"):

@@ -1,7 +1,8 @@
 import logging
 from fastapi import FastAPI
+from contextlib import asynccontextmanager
 from app.api.routers import webhook_router
-from app.api.routers import test_router
+from app.utils.whatsapp import init_http_client, close_http_client
 
 # ── Dev logging: show DEBUG output from our services in the terminal ──────────
 logging.basicConfig(
@@ -12,7 +13,14 @@ logging.basicConfig(
 for _noisy in ("httpcore", "httpx", "openai", "watchfiles", "asyncio"):
     logging.getLogger(_noisy).setLevel(logging.WARNING)
 
-app = FastAPI()
+
+@asynccontextmanager
+async def wpp_clinet_lifespan(app: FastAPI):
+    init_http_client()
+    yield
+    await close_http_client()
+
+
+app = FastAPI(lifespan=wpp_clinet_lifespan)
 
 app.include_router(webhook_router.router)
-app.include_router(test_router.router)

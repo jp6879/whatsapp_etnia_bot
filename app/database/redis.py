@@ -1,6 +1,5 @@
 from typing import Annotated
 from fastapi import Depends
-from app.services.redis_services import RedisService
 from redis.asyncio import Redis
 from app.config import redis_settings
 from app.core.exceptions import RedisConnectionError
@@ -27,8 +26,3 @@ async def get_redis_client():
 
 
 RedisClientDep = Annotated[Redis, Depends(get_redis_client)]
-
-
-async def get_redis_service(redis_client: RedisClientDep) -> RedisService:
-    """Getting the redis service where the data is stored"""
-    return RedisService(redis_client)

@@ -1,9 +1,9 @@
-import ast
 import copy
 
 from typing import Any, Dict, List
 from redis import Redis
 from app.core.enums import TotalStates
+import json
 
 
 class RedisService:
@@ -21,9 +21,8 @@ class RedisService:
         """Getting all the data from the redis"""
         keys = self.client.keys("wa_session:*")
         data_list = []
-        data = {}
         for k in keys:
-            actual_dict = ast.literal_eval((self.client.get(k)).replace("null", "None"))
+            actual_dict = json.loads(self.client.get(k))
             destination = self.lower_format(actual_dict.get("destination", ""))
             departure_iata_code = self.lower_format(
                 actual_dict.get("departure_iata_code", "")
@@ -38,28 +37,30 @@ class RedisService:
             departure_location = self.lower_format(
                 actual_dict.get("departure_location", "")
             )
-
-            data["FECHA"] = actual_dict.get("date_of_contact")
-            data["TELEFONO"] = k.removeprefix("wa_session:").split("@")[0]
-            data["NOMBRE"] = (
-                full_name.split(" ")[0] if len(full_name.split(" ")) >= 1 else ""
-            )
-            data["APELLIDO"] = (
-                full_name.split(" ")[1] if len(full_name.split(" ")) >= 2 else ""
-            )
-            data["DESTINO"] = f"{destination}"
-            data["SALIDA DETECTADA"] = (
-                f"{departure_iata_code}" if departure_iata_code else ""
-            )
-            data["FECHA DEL VIAJE"] = f"{departure_month}"
-            data["CANTIDAD DE PASAJEROS"] = num_travelers_detected
-            data["RESUMEN DE VIAJE"] = " - ".join(
-                filter(
-                    None, [num_travelers_message, departure_location, departure_month]
-                )
-            )
-            data["ESTADO"] = TotalStates[actual_dict.get("state")].lower()
-            data["RED SOCIAL"] = "WHATSAPP"
-            data_list.append(copy.deepcopy(data))
+            data = {
+                "FECHA": actual_dict.get("date_of_contact"),
+                "TELEFONO": k.removeprefix("wa_session:").split("@")[0],
+                "NOMBRE": (
+                    full_name.split(" ")[0] if len(full_name.split(" ")) >= 1 else ""
+                ),
+                "APELLIDO": (
+                    full_name.split(" ")[1] if len(full_name.split(" ")) >= 2 else ""
+                ),
+                "DESTINO": f"{destination}",
+                "SALIDA DETECTADA": (
+                    f"{departure_iata_code}" if departure_iata_code else ""
+                ),
+                "FECHA DEL VIAJE": f"{departure_month}",
+                "CANTIDAD DE PASAJEROS": num_travelers_detected,
+                "RESUMEN DE VIAJE": " - ".join(
+                    filter(
+                        None,
+                        [num_travelers_message, departure_location, departure_month],
+                    )
+                ),
+                "ESTADO": TotalStates[actual_dict.get("state")].lower(),
+                "RED SOCIAL": "WHATSAPP",
+            }
+            data_list.append(data)
 
         return data_list

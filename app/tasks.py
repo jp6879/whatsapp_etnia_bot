@@ -51,5 +51,4 @@ def sync_sheets_with_redis_task():
         async_to_sync(sheets_service.update_sheet)(df)
         return {"message": "Sheets updated successfully"}
     finally:
-        # CRITICAL: Close Redis connection to prevent "max clients" error
         redis_service.client.close()
