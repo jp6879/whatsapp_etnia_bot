@@ -1,0 +1,68 @@
+# Tooling configuration for the Etnia Bot.
+#
+# Runtime deps live in requirements.txt; dev/test deps in
+# requirements-dev.txt. This file is for ruff / mypy / pytest config,
+# not packaging — the app is deployed as a Docker image, not a wheel.
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["app", "tests", "scripts"]
+extend-exclude = ["wspenv", "notebooks", "alembic/versions"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "W",    # pycodestyle warnings
+    "I",    # isort
+    "B",    # bugbear
+    "UP",   # pyupgrade
+    "RUF",  # ruff-specific
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "E501",  # line length handled by formatter
+    "B008",  # FastAPI Depends() in argument defaults is idiomatic
+]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+check_untyped_defs = true
+plugins = ["pydantic.mypy"]
+exclude = ["wspenv/", "notebooks/", "alembic/versions/"]
+
+[[tool.mypy.overrides]]
+module = ["googleapiclient.*", "google.oauth2.*", "celery.*", "pandas.*", "pytz.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+markers = [
+    "integration: tests that hit a live Postgres (skipped without DATABASE_URL)",
+    "slow: long-running tests",
+]
+
+[tool.coverage.run]
+source = ["app"]
+branch = true
+omit = ["app/tasks.py", "app/celery_app.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]

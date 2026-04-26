@@ -1,0 +1,12 @@
+# Etnia Bot — development & test dependencies.
+#
+# Install with: pip install -r requirements.txt -r requirements-dev.txt
+
+# --- Test runner ---
+pytest>=8.3,<9.0
+pytest-asyncio>=0.24,<1.0
+pytest-cov>=5.0,<7.0
+
+# --- Lint / format / typecheck ---
+ruff>=0.7,<1.0
+mypy>=1.13,<2.0
