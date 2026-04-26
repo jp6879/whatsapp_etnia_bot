@@ -1,7 +1,7 @@
 import json
 import logging
 from openai import AsyncOpenAI
-from app.config import openai_settings
+from app.config import get_openai_settings
 
 
 logger = logging.getLogger("guard")
@@ -9,7 +9,7 @@ logger = logging.getLogger("guard")
 
 class PreClassifierService:
     def __init__(self):
-        self.client = AsyncOpenAI(api_key=openai_settings.OPENAI_API_KEY)
+        self.client = AsyncOpenAI(api_key=get_openai_settings().OPENAI_API_KEY)
 
     async def classify_message(self, message: str, context: dict | None = None) -> dict:
         """

@@ -1,7 +1,7 @@
 from pydantic import Field
 import logging
 from openai import AsyncOpenAI
-from app.config import openai_settings
+from app.config import get_openai_settings
 from app.services.agents.system_prompts import (
     COMBINED_EXTRACTION_SYSTEM_INTRO,
     COMBINED_EXTRACTION_SYSTEM_RULES,
@@ -31,7 +31,7 @@ class LLMExtractionService:
     MAX_HISTORY_MESSAGES = 30
 
     def __init__(self):
-        self.client = AsyncOpenAI(api_key=openai_settings.OPENAI_API_KEY)
+        self.client = AsyncOpenAI(api_key=get_openai_settings().OPENAI_API_KEY)
 
     def build_messages_history(self, session: dict) -> list[dict]:
         """Return history as-is — each entry already has {role, content}."""

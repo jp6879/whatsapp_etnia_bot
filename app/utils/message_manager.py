@@ -5,12 +5,13 @@ from difflib import get_close_matches
 from googleapiclient.http import MediaIoBaseDownload
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from app.config import gdrive_settings
+from app.config import get_google_drive_settings
 import re
 
 
 def load_ads_config() -> list[dict]:
     """Load ads config with caching for performance"""
+    gdrive_settings = get_google_drive_settings()
     config_path = gdrive_settings.ADS_FILE_PATH
     with open(config_path, "r", encoding="utf-8") as f:
         return json.load(f)
@@ -18,12 +19,14 @@ def load_ads_config() -> list[dict]:
 
 def load_offers_db():
     """Load messages db with caching for performance"""
+    gdrive_settings = get_google_drive_settings()
     config_path = gdrive_settings.OFFERS_DB_PATH
     with open(config_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
 def build_drive_service():
+    gdrive_settings = get_google_drive_settings()
     creds = service_account.Credentials.from_service_account_file(
         gdrive_settings.SERVICE_ACCOUNT_FILE,
         scopes=gdrive_settings.SCOPES,
@@ -479,6 +482,7 @@ class MessageManager:
     async def get_offer_link(
         self, actual_session
     ) -> tuple[str, str] | tuple[None, None]:
+        gdrive_settings = get_google_drive_settings()
         service = build_drive_service()
         files = await list_files_in_folder(service, gdrive_settings.FOLDER_ID)
         num_travelers = actual_session.get("num_travelers")

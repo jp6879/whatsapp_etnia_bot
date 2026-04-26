@@ -1,6 +1,7 @@
 from celery import Celery
-from app.config import worker_redis_settings
+from app.config import get_worker_redis_settings
 
+worker_redis_settings = get_worker_redis_settings()
 celery = Celery(
     "difusionwsp",
     broker=worker_redis_settings.WORKER_REDIS_DB_URL,

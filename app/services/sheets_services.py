@@ -1,6 +1,6 @@
 import pandas as pd
 from googleapiclient.discovery import Resource
-from app.config import google_sheets_settings
+from app.config import get_google_sheets_settings
 from app.core.exceptions import GoogleSheetsConnectionError
 
 
@@ -12,6 +12,7 @@ class SheetsService:
         self.range_used = "A1:L1000"
 
     async def get_data_in_dataframe(self) -> pd.DataFrame:
+        google_sheets_settings = get_google_sheets_settings()
         rows = (
             self.service.spreadsheets()
             .values()
@@ -33,6 +34,7 @@ class SheetsService:
         return ["" if (v is None or str(v) == "None") else str(v) for v in row]
 
     async def _write_new_data(self, data: pd.DataFrame):
+        google_sheets_settings = get_google_sheets_settings()
         data_on_sheet = await self.get_data_in_dataframe()
         sheet_phone_numbers = data_on_sheet["TELEFONO"].unique()
         db_phone_numbers = data["TELEFONO"].unique()
@@ -94,6 +96,7 @@ class SheetsService:
         return dicts_rows
 
     async def _update_bot_data(self, data: pd.DataFrame):
+        google_sheets_settings = get_google_sheets_settings()
         data_on_sheet = await self.get_data_in_dataframe()
         sheet_phone_numbers = data_on_sheet["TELEFONO"].unique()
         db_phone_numbers = data["TELEFONO"].unique()

@@ -1,11 +1,10 @@
 import logging
+
 import httpx
 
-from app.config import wpp_settings
+from app.config import get_app_settings
 
 logger = logging.getLogger("whatsapp")
-
-WPP_ADAPTER_URL = wpp_settings.WPP_ADAPTER_URL
 
 # Singleton client
 _wpp_client: httpx.AsyncClient | None = None
@@ -27,13 +26,14 @@ async def close_http_client() -> None:
 
 
 async def send_whatsapp_text(
-    to_whatsapp: str, body: str, media: str = None, file_name: str = None
-):
+    to_whatsapp: str, body: str, media: str | None = None, file_name: str | None = None
+) -> None:
     if _wpp_client is None:
         raise RuntimeError(
             "HTTP client not initialized. init_http_client() should have been called at startup."
         )
 
+    wpp_settings = get_app_settings()
     payload = {
         "to": to_whatsapp,
         "message": body,
@@ -44,7 +44,7 @@ async def send_whatsapp_text(
         payload["fileName"] = file_name
 
     try:
-        response = await _wpp_client.post(WPP_ADAPTER_URL, json=payload)
+        response = await _wpp_client.post(wpp_settings.WPP_ADAPTER_URL, json=payload)
         response.raise_for_status()
     except httpx.HTTPStatusError as exc:
         logger.error(
