@@ -2,7 +2,7 @@ import copy
 
 from typing import Any, Dict, List
 from redis import Redis
-from app.core.enums import TotalStates
+from app.core.enums import SessionState
 import json
 
 
@@ -58,7 +58,7 @@ class RedisService:
                         [num_travelers_message, departure_location, departure_month],
                     )
                 ),
-                "ESTADO": TotalStates[actual_dict.get("state")].lower(),
+                "ESTADO": SessionState(actual_dict.get("state")).label.lower(),
                 "RED SOCIAL": "WHATSAPP",
             }
             data_list.append(data)
