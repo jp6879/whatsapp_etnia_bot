@@ -7,7 +7,7 @@ from app.config import openai_settings
 logger = logging.getLogger("guard")
 
 
-class PreClasifyerService:
+class PreClassifierService:
     def __init__(self):
         self.client = AsyncOpenAI(api_key=openai_settings.OPENAI_API_KEY)
 

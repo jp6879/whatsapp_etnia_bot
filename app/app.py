@@ -15,12 +15,12 @@ for _noisy in ("httpcore", "httpx", "openai", "watchfiles", "asyncio"):
 
 
 @asynccontextmanager
-async def wpp_clinet_lifespan(app: FastAPI):
+async def client_lifespan(app: FastAPI):
     init_http_client()
     yield
     await close_http_client()
 
 
-app = FastAPI(lifespan=wpp_clinet_lifespan)
+app = FastAPI(lifespan=client_lifespan)
 
 app.include_router(webhook_router.router)

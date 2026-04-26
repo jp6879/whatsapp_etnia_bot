@@ -6,7 +6,7 @@ from app.core.enums import SessionState
 from app.utils.message_manager import MessageManager
 from app.utils.whatsapp import send_whatsapp_text
 from app.tasks import sync_sheets_with_redis_task
-from app.services.pre_clasifyer_service import PreClasifyerService
+from app.services.pre_classifier_service import PreClassifierService
 from app.services.llm_extraction_service import LLMExtractionService
 
 logger = logging.getLogger("chatbot")
@@ -16,7 +16,7 @@ class ChatbotService:
     def __init__(self, message_manager: MessageManager):
         self.message_manager = message_manager
         self.argentina_tz = pytz.timezone("America/Argentina/Buenos_Aires")
-        self.guard = PreClasifyerService()
+        self.guard = PreClassifierService()
         self.llm_extractor = LLMExtractionService()
 
     async def process_message(

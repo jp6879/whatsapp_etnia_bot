@@ -100,7 +100,7 @@ flowchart LR
 ### 2.2 Strengths (keep these)
 
 - Clear state machine in `app/core/enums.py` (`SessionState`). Keep the enum; extend it.
-- Bot pipeline is nicely split: guard → classifier/extractor → reply. Keep `PreClasifyerService` and `LLMExtractionService` largely as-is.
+- Bot pipeline is nicely split: guard → classifier/extractor → reply. Keep `PreClassifierService` and `LLMExtractionService` largely as-is.
 - FastAPI dependency-injection is used consistently. Good foundation to extend.
 - Offer presentation is deterministic (no LLM for the greeting or the pre-built offer text). Keep that.
 
@@ -171,7 +171,7 @@ Listed from §2 of the original review, annotated with whether they are resolved
 | O5  | `TotalStates` enum overlaps with `SessionState`. Relies on member names matching values.                                                               | **Phase B:** collapse into `SessionState` with a `.label` property.                                                                                                                                                      |
 | O6  | `sheets_services._create_update_request` breaks past column Z (`chr(66 + i)`).                                                                         | **Phase C:** Sheets module deleted. N/A.                                                                                                                                                                                 |
 | O7  | `tasks.py` sort crashes on empty data / missing `FECHA` column.                                                                                        | Phase C: Celery+Sheets removed. N/A.                                                                                                                                                                                     |
-| O8  | `pre_clasifyer_service` fail-closed on OpenAI errors → user dropped silently.                                                                          | **Phase D behaviour decision needed** (see §16).                                                                                                                                                                         |
+| O8  | `pre_classifier_service` fail-closed on OpenAI errors → user dropped silently.                                                                          | **Phase D behaviour decision needed** (see §16). _Decided 2026-04-25: fail-closed retained._                                                                                                                              |
 | O9  | Typos: `pre_clasifyer_service`, `wpp_clinet_lifespan`.                                                                                                 | Phase B rename during restructure.                                                                                                                                                                                       |
 | O10 | `app/services/__init.py` (missing underscore) — not imported anywhere so silently a no-op.                                                             | Phase B cleanup.                                                                                                                                                                                                         |
 | O11 | `Config` classes in `app/config.py` instantiate at import time. Missing env var → import error everywhere.                                             | **Phase B:** wrap each in `@lru_cache` getter.                                                                                                                                                                           |
@@ -896,7 +896,7 @@ Tasks:
 2. In the Chatwoot webhook handler, **skip bot processing** if `conversation.status != 'bot'`.
 3. Add a `conversation_updated` handler so when an agent applies the `bot-takeover` label, we flip `status='bot'` back.
 4. Integration test: send a "yes I accept" message, assert 4 Chatwoot API calls in order.
-5. Decision on `PreClasifyerService` fail-closed (see §16 open decisions).
+5. Decision on `PreClassifierService` fail-closed (see §16 open decisions).
 
 **Definition of done:** agents see the qualified-lead summary as a private note when they open the conversation. They can reply in Chatwoot. Bot stays silent until released.
 
@@ -1021,7 +1021,7 @@ Script is idempotent via `(channel, external_id)` unique constraint.
   - Swap: 2 GB swapfile added as belt-and-suspenders for the 4 GB RAM ceiling.
   - Region note: `eu-west-1` adds ~150–200 ms latency for AR users vs `sa-east-1`. Accepted to avoid region migration on top of the architecture rework. Tracked as a future optimization.
   - Phase C ordering constraint: Chatwoot deploy and the kill of bot-side Redis + Celery + Sheets must happen in the **same** maintenance window. Running both stacks side-by-side risks OOM at ~3.6 GB combined RSS.
-- **`PreClasifyerService` fail mode: fail-closed.** On OpenAI errors the message is dropped silently. Chosen against the §16 recommendation; the operational risk (real customer messages lost during OpenAI outages) is accepted. Phase D will still add a structured log + qualification_event so dropped messages are auditable, but no automated handoff or fallback reply.
+- **`PreClassifierService` fail mode: fail-closed.** On OpenAI errors the message is dropped silently. Chosen against the §16 recommendation; the operational risk (real customer messages lost during OpenAI outages) is accepted. Phase D will still add a structured log + qualification_event so dropped messages are auditable, but no automated handoff or fallback reply.
 
 ### Open
 
@@ -1031,7 +1031,7 @@ Script is idempotent via `(channel, external_id)` unique constraint.
    - **Same Hetzner VPS as Chatwoot** (add another Docker Compose service; free since the box is already there).
    - **Recommendation:** piggyback on the Hetzner box for Phase B. Move to Fly.io in Phase F if we want isolation.
 
-2. **`PreClasifyerService` fail mode** — currently fail-closed (OpenAI error → drop message). I recommend **fail-open**: assume `is_travel_related=true, is_safe=true` on transient LLM errors, log it, and let the downstream flow handle the message. The worst case is an occasional borderline message getting through; better than silently dropping real customers.
+2. **`PreClassifierService` fail mode** — currently fail-closed (OpenAI error → drop message). I recommend **fail-open**: assume `is_travel_related=true, is_safe=true` on transient LLM errors, log it, and let the downstream flow handle the message. The worst case is an occasional borderline message getting through; better than silently dropping real customers.
    - **Needs your approval before Phase D.**
 
 3. **Bot re-engagement after human handoff** — do we want a "re-activate bot" path (agent label `bot-takeover`), or is handoff strictly one-way?
