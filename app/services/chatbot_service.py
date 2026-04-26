@@ -137,21 +137,29 @@ class ChatbotService:
         self, redis_session: RedisSession, from_number: str, body: str
     ):
         actual_session = redis_session.session
-        actual_session["count_requests"] += 1
+        actual_session["count_requests"] = actual_session.get("count_requests", 0) + 1
         state = redis_session.state
 
-        contact_time = self.argentina_tz.localize(
-            datetime.strptime(actual_session.get("date_of_contact"), "%Y-%m-%d %H:%M")
-        )
+        raw_contact = actual_session.get("date_of_contact")
+        try:
+            contact_time = self.argentina_tz.localize(
+                datetime.strptime(raw_contact, "%Y-%m-%d %H:%M")
+            )
+        except (TypeError, ValueError):
+            logger.warning(
+                "[SESSION] Invalid date_of_contact=%r — resetting to now", raw_contact
+            )
+            contact_time = datetime.now(self.argentina_tz)
+            actual_session["date_of_contact"] = contact_time.strftime("%Y-%m-%d %H:%M")
 
         # ── Timeout check ───────────────────────────────────────
         if (
             datetime.now(self.argentina_tz) - contact_time > timedelta(hours=1)
-            and actual_session.get("state") not in SessionState.handoff_states()
+            and state not in SessionState.handoff_states()
         ):
             actual_session["state"] = SessionState.HANDOFF_TIMEOUT
             await redis_session.save_session(actual_session)
-            return {"status": "400", "detail": "Session timeout"}
+            return {"status": "ok", "detail": "Session timeout — handed off"}
 
         # ── Max requests / already handed off ──────────────────
         if (
@@ -159,7 +167,8 @@ class ChatbotService:
             or state in SessionState.handoff_states()
         ):
             # TODO: Send message delegating conversation to a human agent
-            return {"status": "400", "detail": "Session ended or max requests reached"}
+            await redis_session.save_session(actual_session)
+            return {"status": "ok", "detail": "Session ended or max requests reached"}
 
         # ── Guard Agent ───────────────────────────────────────────────────────
         guard_context = {
@@ -172,7 +181,7 @@ class ChatbotService:
             "is_safe"
         ):
             logger.debug("[GUARD] ❌ Message blocked")
-
+            await redis_session.save_session(actual_session)
             return {"status": "406", "detail": "The message is not acceptable"}
 
         logger.debug("[ROUTER] state=%r → routing...", state)
@@ -181,10 +190,15 @@ class ChatbotService:
             return await self._present_offers(
                 actual_session, redis_session, from_number, body
             )
-        elif state == SessionState.EXTRACTING_INFORMATION:
+        if state == SessionState.EXTRACTING_INFORMATION:
             return await self._handle_extraction(
                 actual_session, redis_session, from_number, body
             )
+
+        logger.warning("[ROUTER] Unhandled state=%r — handing off", state)
+        actual_session["state"] = SessionState.HANDOFF_NO_OFFER
+        await redis_session.save_session(actual_session)
+        return {"status": "ok", "detail": f"Unhandled state {state} — handed off"}
 
     # ─────────────────────────────────────────────────────────────────────────
     # STAGE 2 — Handle user reply to offers (single LLM call)

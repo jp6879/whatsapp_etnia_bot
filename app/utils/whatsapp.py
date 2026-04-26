@@ -1,5 +1,9 @@
+import logging
 import httpx
+
 from app.config import wpp_settings
+
+logger = logging.getLogger("whatsapp")
 
 WPP_ADAPTER_URL = wpp_settings.WPP_ADAPTER_URL
 
@@ -25,10 +29,9 @@ async def close_http_client() -> None:
 async def send_whatsapp_text(
     to_whatsapp: str, body: str, media: str = None, file_name: str = None
 ):
-
     if _wpp_client is None:
         raise RuntimeError(
-            "HTTP client not initialized. Call init_http_client() should have been called at startup."
+            "HTTP client not initialized. init_http_client() should have been called at startup."
         )
 
     payload = {
@@ -39,8 +42,18 @@ async def send_whatsapp_text(
     if media:
         payload["mediaUrl"] = media
         payload["fileName"] = file_name
+
     try:
-        await _wpp_client.post(WPP_ADAPTER_URL, json=payload)
-    except Exception as e:
-        print("Error sending message via WPPConnect:", e)
+        response = await _wpp_client.post(WPP_ADAPTER_URL, json=payload)
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        logger.error(
+            "WPP adapter rejected message to=%s status=%s body=%s",
+            to_whatsapp,
+            exc.response.status_code,
+            exc.response.text[:200],
+        )
+        raise
+    except httpx.HTTPError as exc:
+        logger.exception("WPP adapter request failed to=%s: %s", to_whatsapp, exc)
         raise

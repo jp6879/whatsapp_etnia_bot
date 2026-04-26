@@ -526,13 +526,14 @@ class MessageManager:
         dest_lower = destination_key.lower()
         return self.offers_db.get(dest_lower)
 
-    def get_offer_summary_for_destination_key(self, destination_key: str) -> str:
+    def get_offer_summary_for_destination_key(self, destination_key: str) -> str | None:
         """
-        Return a summary for the given offer
+        Return a summary for the given offer, or None if the destination key is unknown.
         """
-        return self.get_offer_for_destination_key(destination_key).get(
-            "summary_for_bot"
-        )
+        offer = self.get_offer_for_destination_key(destination_key)
+        if offer is None:
+            return None
+        return offer.get("summary_for_bot")
 
     def get_message_offer(self, actual_session: dict) -> str | None:
         """
@@ -555,14 +556,3 @@ class MessageManager:
     def normalize_text(self, text: str) -> str:
         text = re.sub(r"[^a-záéíóúñ0-9 ]", " ", text.lower())
         return text
-
-    def word_to_num(self, token: str) -> int:
-        return self.NUM_WORDS.get(token.lower())
-
-    def get_month_from_message(self, message: str) -> str | None:
-        for month, variants in self.MONTHS.items():
-            for variant in variants:
-                if variant in message.lower():
-                    return month
-
-        return None

@@ -84,10 +84,7 @@ class SheetsService:
         for i, (value_to_update, value_on_sheet) in enumerate(
             zip(row_to_update, db_row)
         ):
-            if (
-                value_to_update != value_on_sheet
-                and value_on_sheet.lower() == value_on_sheet
-            ):
+            if value_to_update != value_on_sheet:
                 dicts_rows.append(
                     {
                         "range": f"{chr(66 + i)}{row_index_on_sheet + 2}",
