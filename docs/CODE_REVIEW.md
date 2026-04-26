@@ -1,7 +1,7 @@
 # Etnia CRM — Code Review & Architecture Plan
 
 > **Status:** Plan document, pre-implementation. No Phase B+ code has been written yet. Phase A hot-fixes (§3) have already shipped.
-> **Last updated:** 2026-04-25.
+> **Last updated:** 2026-04-25 (decisions section refreshed).
 > **Diagrams:** Mermaid. Renders in GitHub, VS Code (with a Mermaid extension), and most modern Markdown viewers.
 
 ---
@@ -1011,6 +1011,17 @@ Script is idempotent via `(channel, external_id)` unique constraint.
 - **Webpage catalog stays on its own Supabase project.** `destinations` and `multidestination_packages` are owned by the web team and not migrated into the CRM project. The bot reads them via the webpage project's REST API (`WebCatalogClient`) and denormalizes a few fields into `offers` for offline access. No cross-project FK; app-level validation on insert/update + nightly reconciliation. Documented in §7.2 (offers table), §9 (`integrations/web_catalog.py`), and §11 (`WEB_SUPABASE_*` env vars).
 - **`tenant_config` is for Chatwoot connection settings, not multi-tenancy.** Single-row table holding Chatwoot base URL / account id / inbox→channel map. The name predates the multi-tenant decision in §0 and is a misnomer. Renaming to `chatwoot_config` is cosmetic — deferred to Phase F or never.
 - **`qualification_events` is an append-only audit log of bot activity, not the travel-data store.** Travel fields (destination, travelers, dates, departure city) live denormalized on `conversations` + the `qualification` jsonb. The events table just lets you replay/debug what the bot did. Optional in v1 if audit isn't a priority — drop it without consequences to live behaviour.
+
+### Decided since 2026-04-25
+
+- **CRM Supabase project provisioned.** `DATABASE_URL` set in local `.env`. `pgcrypto` extension confirmed enabled. Phase B Alembic migrations can run against it.
+- **Bot host: existing AWS EC2 instance** (replaces the Hetzner CX22 recommendation in §0 / §6.2). Same architecture — Chatwoot + bot piggyback on a single VPS — different provider.
+  - Instance: `c7i-flex.large` (2 vCPU, 4 GB RAM) in `eu-west-1`. Already runs the legacy bot.
+  - Disk: 8 GB EBS root → must be resized to ≥30 GB before Phase C (online resize via `growpart` + `resize2fs`).
+  - Swap: 2 GB swapfile added as belt-and-suspenders for the 4 GB RAM ceiling.
+  - Region note: `eu-west-1` adds ~150–200 ms latency for AR users vs `sa-east-1`. Accepted to avoid region migration on top of the architecture rework. Tracked as a future optimization.
+  - Phase C ordering constraint: Chatwoot deploy and the kill of bot-side Redis + Celery + Sheets must happen in the **same** maintenance window. Running both stacks side-by-side risks OOM at ~3.6 GB combined RSS.
+- **`PreClasifyerService` fail mode: fail-closed.** On OpenAI errors the message is dropped silently. Chosen against the §16 recommendation; the operational risk (real customer messages lost during OpenAI outages) is accepted. Phase D will still add a structured log + qualification_event so dropped messages are auditable, but no automated handoff or fallback reply.
 
 ### Open
 
